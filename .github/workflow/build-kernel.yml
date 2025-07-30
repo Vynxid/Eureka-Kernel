@@ -1,0 +1,43 @@
+name: Build A10 Kernel with KernelSU Next
+
+on:
+  push:
+    branches:
+      - "R13-AOSP-KSUN"
+  workflow_dispatch:
+
+jobs:
+  build-kernel:
+    name: Build KSUN Kernel
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Build
+        uses: dabao1955/kernel_build_action@main
+        with:
+          # Your kernel source repo
+          kernel-url: https://github.com/lotusify/Eureka-Kernel
+          kernel-branch: R13-AOSP-KSUN
+
+          # Defconfig & architecture
+          config: exynos7885-a10_defconfig
+          arch: arm64
+          android-version: 11
+
+          # Toolchains
+          aosp-gcc: true
+          aosp-clang: true
+          aosp-clang-version: r383902
+
+          # AnyKernel3 zip packaging
+          anykernel3: true
+
+          # Optional: auto create GitHub release
+          release: true
+          access-token: ${{ secrets.KERNEL_RELEASE_TOKEN }}
+
+      - name: Upload Flashable Zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: Eureka-Kernel-KSUN
+          path: AnyKernel3/*.zip
