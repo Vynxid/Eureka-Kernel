@@ -12,6 +12,11 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
       - name: Build
         uses: dabao1955/kernel_build_action@main
         with:
