@@ -58,7 +58,8 @@ jobs:
         export CROSS_COMPILE=aarch64-linux-gnu-
         export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
         export CC="ccache clang"
-        export LD=ld.lld
+        # Use GNU ld instead of lld to avoid --lto-O3 issues
+        export LD=aarch64-linux-gnu-ld
         export AR=llvm-ar
         export NM=llvm-nm
         export OBJDUMP=llvm-objdump
@@ -66,9 +67,14 @@ jobs:
         export STRIP=llvm-strip
         export KCFLAGS=-w
         export ANDROID_MAJOR_VERSION=r
+        # Disable LTO flags to prevent linker errors
+        export KBUILD_LDFLAGS=""
 
         make O=out $KERNEL_DEFCONFIG
-        scripts/config --file out/.config -d LTO -d LTO_CLANG
+        # Disable LTO and related options that cause linker issues
+        scripts/config --file out/.config -d LTO -d LTO_CLANG -d CFI_CLANG
+        # Enable A10 specific configs
+        scripts/config --file out/.config -e ARCH_SUNXI -e MACH_SUN4I
         make O=out olddefconfig
         make O=out -j$(nproc --all)
 
