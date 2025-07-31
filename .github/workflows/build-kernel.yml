@@ -40,7 +40,7 @@ jobs:
         curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
         # Verify installation
         ls -la drivers/kernelsu/
-        ls -la drivers/kernelsu/Kconfig || echo "Kconfig not found in submodule"
+        ls -la drivers/kernelsu/Kconfig || echo "Kconfig not found"
 
     - name: Cache proton-clang
       uses: actions/cache@v3
@@ -71,7 +71,9 @@ jobs:
           binutils make python3 python2 libssl-dev build-essential \
           bc bison flex unzip ca-certificates xz-utils \
           mkbootimg cpio device-tree-compiler git git-lfs
+        # Only download proton-clang if not cached
         if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
+          rm -rf proton-clang
           git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
         fi
         make clean
@@ -137,5 +139,5 @@ jobs:
     - name: Upload kernel to artifact
       uses: actions/upload-artifact@v4
       with:
-        name: R13-AOSP-KSUN--${{ github.sha }}
+        name: R13-AOSP-KSUN-${{ github.run_number }}
         path: AnyKernel3/
