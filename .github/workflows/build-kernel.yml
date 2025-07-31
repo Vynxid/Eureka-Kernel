@@ -67,7 +67,7 @@ jobs:
         sudo apt install -y \
           gcc-aarch64-linux-gnu \
           gcc-arm-linux-gnueabi \
-          binutils make python3 libssl-dev build-essential \
+          binutils make python3 python2 libssl-dev build-essential \
           bc bison flex unzip ca-certificates xz-utils \
           mkbootimg cpio device-tree-compiler git git-lfs
         if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
