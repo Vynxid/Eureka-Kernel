@@ -24,8 +24,29 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
       with:
-        submodules: true
+        submodules: recursive
         fetch-depth: 100
+
+    - name: Initialize submodules
+      run: |
+        git submodule update --init --recursive
+
+    - name: Cache proton-clang
+      uses: actions/cache@v3
+      id: cache-proton
+      with:
+        path: proton-clang
+        key: proton-clang-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
+        restore-keys: |
+          proton-clang-${{ runner.os }}-
+
+    - name: Cache APT packages
+      uses: actions/cache@v3
+      with:
+        path: /var/cache/apt/archives
+        key: apt-cache-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
+        restore-keys: |
+          apt-cache-${{ runner.os }}-
 
     - name: Set up ccache
       uses: hendrikmuhs/ccache-action@v1.2
@@ -39,7 +60,9 @@ jobs:
           binutils make python3 libssl-dev build-essential \
           bc bison flex unzip ca-certificates xz-utils \
           mkbootimg cpio device-tree-compiler git git-lfs
-        git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
+        if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
+          git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
+        fi
         make clean
         make mrproper
 
