@@ -31,6 +31,16 @@ jobs:
       run: |
         git submodule update --init --recursive
 
+    - name: Setup KernelSU symlink
+      run: |
+        # Remove existing symlink if it exists
+        rm -f drivers/kernelsu
+        # Create proper symlink to KernelSU-Next kernel directory
+        ln -sf ../KernelSU-Next/kernel drivers/kernelsu
+        # Verify the symlink and required files exist
+        ls -la drivers/kernelsu/
+        ls -la drivers/kernelsu/Kconfig || echo "Kconfig not found in submodule"
+
     - name: Cache proton-clang
       uses: actions/cache@v3
       id: cache-proton
