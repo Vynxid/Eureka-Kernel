@@ -615,9 +615,10 @@ extern void untrack_pfn(struct vm_area_struct *vma, unsigned long pfn,
 #endif
 
 #ifdef CONFIG_UKSM
+extern __read_mostly unsigned long uksm_zero_pfn;
+
 static inline int is_uksm_zero_pfn(unsigned long pfn)
 {
-	extern __read_mostly unsigned long uksm_zero_pfn;
         return pfn == uksm_zero_pfn;
 }
 #else
@@ -720,7 +721,7 @@ static inline int pmd_none_or_trans_huge_or_clear_bad(pmd_t *pmd)
 {
 	pmd_t pmdval = pmd_read_atomic(pmd);
 	/*
-	 * The barrier will stabilize the pmdval in a register or on
+	 * The barrier will stabilize the pmdval in a register or
 	 * the stack so that it will stop changing under the code.
 	 *
 	 * When CONFIG_TRANSPARENT_HUGEPAGE=y on x86 32bit PAE,
