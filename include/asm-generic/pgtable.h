@@ -639,15 +639,15 @@ static inline int is_zero_pfn(unsigned long pfn)
 #define my_zero_pfn(addr)	page_to_pfn(ZERO_PAGE(addr))
 
 #else
+extern __read_mostly unsigned long zero_pfn;
+
 static inline int is_zero_pfn(unsigned long pfn)
 {
-	extern __read_mostly unsigned long zero_pfn;
 	return (pfn == zero_pfn) || (is_uksm_zero_pfn(pfn));
 }
 
 static inline unsigned long my_zero_pfn(unsigned long addr)
 {
-	extern unsigned long zero_pfn;
 	return zero_pfn;
 }
 #endif
