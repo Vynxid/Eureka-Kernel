@@ -23,21 +23,14 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
-      with:
-        submodules: recursive
-        fetch-depth: 100
 
-    - name: Initialize submodules
-      run: |
-        git submodule update --init --recursive
-
-    - name: Setup KernelSU-Next
+    - name: Setup SukiSU
       run: |
         # Remove existing KernelSU setup
         rm -rf KernelSU-Next
         rm -rf drivers/kernelsu
-        # Install latest KernelSU-Next from next branch
-        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.0.3
+        # Install SukiSU
+        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
         # Verify installation
         ls -la drivers/kernelsu/
         ls -la drivers/kernelsu/Kconfig || echo "Kconfig not found"
