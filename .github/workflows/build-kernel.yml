@@ -132,5 +132,5 @@ jobs:
     - name: Upload kernel to artifact
       uses: actions/upload-artifact@v4
       with:
-        name: R13-AOSP-KSUN-${{ github.run_number }}
+        name: R13-AOSP-SukiSU-${{ github.run_number }}
         path: AnyKernel3/
