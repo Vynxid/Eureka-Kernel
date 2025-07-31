@@ -75,16 +75,6 @@ jobs:
         scripts/config --file out/.config -d LTO -d LTO_CLANG -d CFI_CLANG
         # Enable A10 specific configs
         scripts/config --file out/.config -e ARCH_SUNXI -e MACH_SUN4I
-        # Disable problematic LCD driver that uses floating point
-        scripts/config --file out/.config -d DRM_PANEL_S6D7AT0B_A10
-        scripts/config --file out/.config -d FB_S6D7AT0B_A10
-        # Patch floating point issue before build
-        if [ -f drivers/video/fbdev/exynos/dpu_7885/panels/s6d7at0b_a10_lcd_ctrl.c ]; then
-          sed -i 's/lcd->custom_brightness \* 1\.2/(lcd->custom_brightness * 12) \/ 10/g' drivers/video/fbdev/exynos/dpu_7885/panels/s6d7at0b_a10_lcd_ctrl.c
-        fi
-        if [ -f drivers/video/fbdev/exynos/dpu_7885/panels/s6d7at0b_a10_boe_lcd_ctrl.c ]; then
-          sed -i 's/lcd->custom_brightness \* 1\.2/(lcd->custom_brightness * 12) \/ 10/g' drivers/video/fbdev/exynos/dpu_7885/panels/s6d7at0b_a10_boe_lcd_ctrl.c
-        fi
         make O=out olddefconfig
         make O=out -j$(nproc --all)
 
