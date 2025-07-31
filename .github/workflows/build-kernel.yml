@@ -37,7 +37,7 @@ jobs:
         rm -rf KernelSU-Next
         rm -rf drivers/kernelsu
         # Install latest KernelSU-Next from next branch
-        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.0.8
         # Verify installation
         ls -la drivers/kernelsu/
         ls -la drivers/kernelsu/Kconfig || echo "Kconfig not found"
