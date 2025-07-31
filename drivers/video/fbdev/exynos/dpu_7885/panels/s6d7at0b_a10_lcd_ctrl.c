@@ -201,7 +201,7 @@ static int dsim_panel_set_brightness(struct lcd_info *lcd, int force)
 		if (lcd->custom_brightness >= 0 && lcd->custom_brightness <= 255) {
 			int i = lcd->custom_brightness;
 			for ( i; i < (lcd->custom_brightness + 1); i++ ) {
-				int value = lcd->custom_brightness * 1.2;
+				int value = (lcd->custom_brightness * 12) / 10;
 				if (value < 2) {
 					value = 1;
 				}
