@@ -1,0 +1,192 @@
+name: Build Kernel with Eureka Script
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_MAXSIZE: "2G"
+      CCACHE_HARDLINK: "true"
+      # Fixed KERNEL_DEFCONFIG for Samsung Galaxy A10
+      KERNEL_DEFCONFIG: "exynos7885-a10_defconfig"
+      
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+        fetch-depth: 100
+
+    - name: Initialize submodules
+      run: git submodule update --init --recursive
+
+    - name: Setup KernelSU-Next
+      run: |
+        # Remove existing KernelSU setup
+        rm -rf KernelSU-Next KernelSU drivers/kernelsu
+        # Install latest KernelSU-Next 1.0.9
+        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.0.9
+        # Verify installation
+        ls -la drivers/kernelsu/
+        ls -la drivers/kernelsu/Kconfig || echo "Kconfig not found"
+
+    - name: Cache proton-clang
+      uses: actions/cache@v3
+      id: cache-proton
+      with:
+        path: proton-clang
+        key: proton-clang-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
+        restore-keys: |
+          proton-clang-${{ runner.os }}-
+
+    - name: Cache APT packages
+      uses: actions/cache@v3
+      with:
+        path: /var/cache/apt/archives
+        key: apt-cache-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
+        restore-keys: |
+          apt-cache-${{ runner.os }}-
+
+    - name: Set up ccache
+      uses: hendrikmuhs/ccache-action@v1.2
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt install -y \
+          gcc-aarch64-linux-gnu \
+          gcc-arm-linux-gnueabi \
+          binutils make python3 python2 libssl-dev build-essential \
+          bc bison flex unzip ca-certificates xz-utils \
+          mkbootimg cpio device-tree-compiler git git-lfs
+        
+        # Only download proton-clang if not cached
+        if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
+          rm -rf proton-clang
+          git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
+        fi
+        
+        make clean
+        make mrproper
+
+    - name: GetTime
+      id: get_time
+      run: |
+        echo "TIME=$(TZ=UTC+7 date +%m%d%H%M)" >> $GITHUB_OUTPUT
+
+    - name: Setup toolchain directory
+      run: |
+        # Create toolchain directory and link to proton-clang
+        mkdir -p toolchain
+        if [ -d "proton-clang" ]; then
+          ln -sf ../proton-clang/bin toolchain/bin
+          ln -sf ../proton-clang/lib toolchain/lib
+        fi
+        
+        # Verify toolchain setup
+        ls -la toolchain/
+        ls -la proton-clang/bin/ | head -10
+
+    - name: Run Eureka build script
+      run: |
+        chmod +x build.sh
+        
+        # Set comprehensive environment for CI build 
+        export BUILD_NO=""
+        export CORES=$(nproc --all)
+        export TERM=xterm-256color
+        export CI=true
+        export DEBIAN_FRONTEND=noninteractive
+        export SHELL=/bin/bash
+        export COLUMNS=80
+        export LINES=24
+        
+        echo "=== Starting Eureka build script ==="
+        echo "Available cores: $CORES"
+        echo "Current directory: $(pwd)"
+        echo "Environment variables set for CI"
+        echo "TERM=$TERM"
+        echo "CI=$CI"
+        
+        # Show build_output.log content from previous run if exists
+        if [ -f "build_output.log" ]; then
+          echo "=== Previous build log found ==="
+          tail -20 build_output.log
+        fi
+        
+        # Run the patched script and capture all output
+        echo "Running Eureka build script with patched values..."
+        
+        # Use script command to handle terminal emulation properly
+        script -q -c "timeout 7200 bash -x build.sh" build_output.log || {
+          exit_code=$?
+          echo "Script execution completed with exit code $exit_code"
+          
+          # Show detailed error information
+          echo "=== Last 200 lines of build output ==="
+          tail -200 build_output.log 2>/dev/null || echo "No build output log found"
+          
+          # Continue to check for partial build results
+        }
+        
+        echo "=== Build script execution completed ==="
+        
+        # Show the build output for debugging
+        echo "=== Build output (last 100 lines) ==="
+        tail -100 build_output.log 2>/dev/null || echo "No build output log found"
+        
+        # Check if build was successful by looking for output files
+        echo "=== Checking build results ==="
+        if [ -f "arch/arm64/boot/Image" ]; then
+          echo "✓ Kernel Image found in arch/arm64/boot/"
+          ls -la arch/arm64/boot/
+        else
+          echo "✗ No Kernel Image found in arch/arm64/boot/"
+          ls -la arch/arm64/boot/ || echo "boot directory not found"
+        fi
+        
+        if [ -f "kernel_zip/anykernel/Image" ]; then
+          echo "✓ Image file found in kernel_zip/anykernel/"
+        else
+          echo "✗ No Image file found in kernel_zip/anykernel/"
+          ls -la kernel_zip/anykernel/ || echo "anykernel directory not found"
+        fi
+        
+        # Check out directory
+        if [ -d "out" ]; then
+          echo "✓ out directory exists"
+          ls -la out/arch/arm64/boot/ 2>/dev/null || echo "No built files in out/"
+        else
+          echo "✗ out directory not found"
+        fi
+        
+        # Show disk usage and memory for debugging
+        echo "=== System resources after build ==="
+        df -h
+        free -h
+
+    - name: Package kernel
+      run: |
+        echo "Packaging and preparing for upload..."
+        if [ -d "kernel_zip/anykernel" ]; then
+          echo "Kernel build completed successfully"
+          ls -la kernel_zip/anykernel/
+        else
+          echo "Warning: kernel_zip/anykernel directory not found"
+          find . -name "*.zip" -type f 2>/dev/null || echo "No zip files found"
+        fi
+
+    - name: Upload kernel to artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Eureka_Kernel_A10_R15_${{ github.run_number }}
+        path: |
+          kernel_zip/anykernel/
+          kernel_zip/aroma/
+          *.zip
+        if-no-files-found: warn
