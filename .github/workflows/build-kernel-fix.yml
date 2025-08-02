@@ -96,23 +96,79 @@ jobs:
       run: |
         chmod +x build.sh
         
-        # Set environment for build 
+        # Set comprehensive environment for CI build 
         export BUILD_NO=""
         export CORES=$(nproc --all)
+        export TERM=xterm-256color
+        export CI=true
+        export DEBIAN_FRONTEND=noninteractive
+        export SHELL=/bin/bash
+        export COLUMNS=80
+        export LINES=24
         
-        # Simply run the patched script directly - it should work with our patches
+        echo "=== Starting Eureka build script ==="
+        echo "Available cores: $CORES"
+        echo "Current directory: $(pwd)"
+        echo "Environment variables set for CI"
+        echo "TERM=$TERM"
+        echo "CI=$CI"
+        
+        # Show build_output.log content from previous run if exists
+        if [ -f "build_output.log" ]; then
+          echo "=== Previous build log found ==="
+          tail -20 build_output.log
+        fi
+        
+        # Run the patched script and capture all output
         echo "Running Eureka build script with patched values..."
-        bash build.sh 2>&1 | tee build_output.log || echo "Script execution completed with possible errors"
         
-        echo "Build script execution completed"
+        # Use script command to handle terminal emulation properly
+        script -q -c "timeout 7200 bash -x build.sh" build_output.log || {
+          exit_code=$?
+          echo "Script execution completed with exit code $exit_code"
+          
+          # Show detailed error information
+          echo "=== Last 200 lines of build output ==="
+          tail -200 build_output.log 2>/dev/null || echo "No build output log found"
+          
+          # Continue to check for partial build results
+        }
+        
+        echo "=== Build script execution completed ==="
+        
+        # Show the build output for debugging
+        echo "=== Build output (last 100 lines) ==="
+        tail -100 build_output.log 2>/dev/null || echo "No build output log found"
         
         # Check if build was successful by looking for output files
-        if [ -f "kernel_zip/anykernel/Image" ]; then
-          echo "Build appears successful - Image file found"
+        echo "=== Checking build results ==="
+        if [ -f "arch/arm64/boot/Image" ]; then
+          echo "✓ Kernel Image found in arch/arm64/boot/"
+          ls -la arch/arm64/boot/
         else
-          echo "Build may have failed - no Image file found"
+          echo "✗ No Kernel Image found in arch/arm64/boot/"
           ls -la arch/arm64/boot/ || echo "boot directory not found"
         fi
+        
+        if [ -f "kernel_zip/anykernel/Image" ]; then
+          echo "✓ Image file found in kernel_zip/anykernel/"
+        else
+          echo "✗ No Image file found in kernel_zip/anykernel/"
+          ls -la kernel_zip/anykernel/ || echo "anykernel directory not found"
+        fi
+        
+        # Check out directory
+        if [ -d "out" ]; then
+          echo "✓ out directory exists"
+          ls -la out/arch/arm64/boot/ 2>/dev/null || echo "No built files in out/"
+        else
+          echo "✗ out directory not found"
+        fi
+        
+        # Show disk usage and memory for debugging
+        echo "=== System resources after build ==="
+        df -h
+        free -h
 
     - name: Package kernel
       run: |
