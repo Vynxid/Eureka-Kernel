@@ -2,42 +2,6 @@ name: Build Kernel with Eureka Script
 
 on:
   workflow_dispatch:
-    inputs:
-      # Add inputs for the user to customize when running the workflow
-      device_choice:
-        description: 'Device to build for'
-        required: true
-        default: '1' # 1: SM_A105X
-        type: choice
-        options:
-          - '1' # SM_A105X
-          - '2' # SM_A205X
-          - '3' # SM_A202X
-          - '4' # SM_A305X
-          - '5' # SM_A307X
-          - '6' # SM_A405X
-          - '7' # SM_A3050X
-          - '8' # SM_M205X
-      android_os:
-        description: 'Android OS version'
-        required: true
-        default: '2' # 2: Android 11 (OneUI 3)
-        type: choice
-        options:
-          - '1' # Android 10/11/12 (Legacy)
-          - '2' # Android 11 (OneUI 3)
-      selinux_state:
-        description: 'SELinux state'
-        required: true
-        default: '1' # 1: Enforcing
-        type: choice
-        options:
-          - '1' # Enforcing
-          - '2' # Permissive
-      kernel_version:
-        description: 'Custom kernel version'
-        required: false
-        default: 'R15'
 
 jobs:
   build:
@@ -117,46 +81,7 @@ jobs:
 
     - name: Run Eureka build script
       run: |
-        chmod +x build.sh # Ensure your script has execute permissions
-
-        # Create an expect script to automate user input
-        cat << 'EOF' > eureka_automation.exp
-        #!/usr/bin/expect -f
-        set timeout 600
-
-        # Start the Eureka script
-        spawn ./build.sh
-
-        # Select device
-        expect "Please select your device:"
-        send "${{ github.event.inputs.device_choice }}\r"
-        
-        # Select Android OS version
-        expect "Please select your Android Version:"
-        send "${{ github.event.inputs.android_os }}\r"
-        
-        # Enter number of cores (empty to use all)
-        expect "Please enter how many cores to be used by compiler (Leave blank to use all cores) :"
-        send "\r"
-
-        # Enter kernel version
-        expect "Please type kernel version without 'R'"
-        send "${{ github.event.inputs.kernel_version }}\r"
-
-        # Enter build_user (empty to use default)
-        expect "Please define build_user (E.g:"
-        send "\r"
-        
-        # Select SELinux state
-        expect "Choose which SElinux state you wish to have"
-        send "${{ github.event.inputs.selinux_state }}\r"
-
-        expect eof
-        EOF
-        
-        # Give execute permission and run the expect script
-        chmod +x eureka_automation.exp
-        ./eureka_automation.exp
+        ./build.sh auto ems
 
     - name: Package kernel
       run: |
