@@ -1,0 +1,171 @@
+name: Build Kernel with Eureka Script
+
+on:
+  workflow_dispatch:
+    inputs:
+      # Add inputs for the user to customize when running the workflow
+      device_choice:
+        description: 'Device to build for'
+        required: true
+        default: '1' # 1: SM_A105X
+        type: choice
+        options:
+          - '1' # SM_A105X
+          - '2' # SM_A205X
+          - '3' # SM_A202X
+          - '4' # SM_A305X
+          - '5' # SM_A307X
+          - '6' # SM_A405X
+          - '7' # SM_A3050X
+          - '8' # SM_M205X
+      android_os:
+        description: 'Android OS version'
+        required: true
+        default: '2' # 2: Android 11 (OneUI 3)
+        type: choice
+        options:
+          - '1' # Android 10/11/12 (Legacy)
+          - '2' # Android 11 (OneUI 3)
+      selinux_state:
+        description: 'SELinux state'
+        required: true
+        default: '1' # 1: Enforcing
+        type: choice
+        options:
+          - '1' # Enforcing
+          - '2' # Permissive
+      kernel_version:
+        description: 'Custom kernel version'
+        required: false
+        default: 'R15'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_MAXSIZE: "2G"
+      CCACHE_HARDLINK: "true"
+      # KERNEL_DEFCONFIG will be handled by the Eureka script
+      KERNEL_DEFCONFIG: "exynos7885-a10_defconfig"
+      
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+        fetch-depth: 100
+
+    - name: Initialize submodules
+      run: git submodule update --init --recursive
+
+    - name: Setup KernelSU-Next
+      run: |
+        # Remove existing KernelSU setup
+        rm -rf KernelSU-Next KernelSU drivers/kernelsu
+        # Install latest KernelSU-Next 1.0.9
+        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.0.9
+        # Verify installation
+        ls -la drivers/kernelsu/
+        ls -la drivers/kernelsu/Kconfig || echo "Kconfig not found"
+
+    - name: Cache proton-clang
+      uses: actions/cache@v3
+      id: cache-proton
+      with:
+        path: proton-clang
+        key: proton-clang-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
+        restore-keys: |
+          proton-clang-${{ runner.os }}-
+
+    - name: Cache APT packages
+      uses: actions/cache@v3
+      with:
+        path: /var/cache/apt/archives
+        key: apt-cache-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
+        restore-keys: |
+          apt-cache-${{ runner.os }}-
+
+    - name: Set up ccache
+      uses: hendrikmuhs/ccache-action@v1.2
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt install -y \
+          gcc-aarch64-linux-gnu \
+          gcc-arm-linux-gnueabi \
+          binutils make python3 python2 libssl-dev build-essential \
+          bc bison flex unzip ca-certificates xz-utils \
+          mkbootimg cpio device-tree-compiler git git-lfs expect
+        
+        # Only download proton-clang if not cached
+        if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
+          rm -rf proton-clang
+          git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
+        fi
+        
+        make clean
+        make mrproper
+
+    - name: GetTime
+      id: get_time
+      run: |
+        echo "TIME=$(TZ=UTC+7 date +%m%d%H%M)" >> $GITHUB_OUTPUT
+
+    - name: Run Eureka build script
+      run: |
+        chmod +x build.sh # Ensure your script has execute permissions
+
+        # Create an expect script to automate user input
+        cat << 'EOF' > eureka_automation.exp
+        #!/usr/bin/expect -f
+        set timeout 600
+
+        # Start the Eureka script
+        spawn ./build.sh
+
+        # Select device
+        expect "Please select your device:"
+        send "${{ github.event.inputs.device_choice }}\r"
+        
+        # Select Android OS version
+        expect "Please select your Android Version:"
+        send "${{ github.event.inputs.android_os }}\r"
+        
+        # Enter number of cores (empty to use all)
+        expect "Please enter how many cores to be used by compiler (Leave blank to use all cores) :"
+        send "\r"
+
+        # Enter kernel version
+        expect "Please type kernel version without 'R'"
+        send "${{ github.event.inputs.kernel_version }}\r"
+
+        # Enter build_user (empty to use default)
+        expect "Please define build_user (E.g:"
+        send "\r"
+        
+        # Select SELinux state
+        expect "Choose which SElinux state you wish to have"
+        send "${{ github.event.inputs.selinux_state }}\r"
+
+        expect eof
+        EOF
+        
+        # Give execute permission and run the expect script
+        chmod +x eureka_automation.exp
+        ./eureka_automation.exp
+
+    - name: Package kernel
+      run: |
+        # The Eureka script already creates the flashable zip, so this step
+        # can be used for any final processing if needed.
+        echo "Packaging and preparing for upload..."
+
+    - name: Upload kernel to artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Eureka_Kernel_${{ github.run_number }}
+        path: AnyKernel3/
