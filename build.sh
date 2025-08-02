@@ -1,4 +1,4 @@
-#!/bin/sudo bash
+#!/bin/bash
 #
 # Custom build script for Eureka kernels by Chatur27, Gabriel2392 and roynatech2544 @Github - 2022
 #
@@ -775,12 +775,16 @@ INDIVIDUAL() {
 
 ###################### Script starts here #######################
 
+echo "DEBUG: Script started with arguments: $@"
+echo "DEBUG: BOT_TOKEN=$BOT_TOKEN"
+
 if [ "${BOT_TOKEN}" == "0" ]; then
 	echo " ${RED}ERROR! Please configure Telegram vars properly."
 	exit
 fi
 
 if [ "$1" == "auto" ]; then
+	echo "DEBUG: Running in auto mode"
 	if [ "$2" == "hmp" ]; then
 		export SCHEDULER=HMP
 	elif [ "$2" == "ems" ]; then
@@ -791,6 +795,7 @@ if [ "$1" == "auto" ]; then
 	fi
 	BUILD_ALL
 elif [ "$1" == "dtb" ]; then
+	echo "DEBUG: Running DTB generator"
     clear
     echo " ${ON_BLUE}Exynos7885 (2019) DTB generator: ${STD}"
     echo " "
@@ -805,7 +810,7 @@ elif [ "$1" == "dtb" ]; then
         fi
     fi
 else
+	echo "DEBUG: Running individual build"
 	BUILD_NO=""
 	INDIVIDUAL
-
 fi
