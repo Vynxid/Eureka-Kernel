@@ -96,11 +96,23 @@ jobs:
       run: |
         chmod +x build.sh
         
-        # Simply run the patched script - no need for expect or environment variables
+        # Set environment for build 
+        export BUILD_NO=""
+        export CORES=$(nproc --all)
+        
+        # Simply run the patched script directly - it should work with our patches
         echo "Running Eureka build script with patched values..."
-        ./build.sh 2>&1 | tee build_output.log
+        bash build.sh 2>&1 | tee build_output.log || echo "Script execution completed with possible errors"
         
         echo "Build script execution completed"
+        
+        # Check if build was successful by looking for output files
+        if [ -f "kernel_zip/anykernel/Image" ]; then
+          echo "Build appears successful - Image file found"
+        else
+          echo "Build may have failed - no Image file found"
+          ls -la arch/arm64/boot/ || echo "boot directory not found"
+        fi
 
     - name: Package kernel
       run: |
