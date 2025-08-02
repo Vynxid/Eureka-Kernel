@@ -452,23 +452,10 @@ PROCESSES() {
 	echo " ${ON_BLUE}Your system has $CORES cores. ${STD}"
 	echo " "
 
-	if [ "${BUILD_NO}" != "" ]; then
-		export cores=""
-	else
-		read -p " ${GREEN}Please enter how many cores to be used by compiler (Leave blank to use all cores) : " cores
-	fi
-
-
-	if [ "${cores}" == "" ]; then
-		echo " "
-		echo " Using all $CORES cores for compilation. ${STD}"
-		sleep 1
-	else
-		echo " "
-		echo " Using $cores cores for compilation. ${STD}"
-		CORES=$cores
-		sleep 1
-	fi
+	# Hard-coded for CI: use all cores
+	export cores=""
+	echo " Using all $CORES cores for compilation. ${STD}"
+	sleep 1
 }
 
 ENTER_VERSION() {
@@ -476,16 +463,10 @@ ENTER_VERSION() {
 	REV="$(grep -Po 'Eureka R\K[^*]+' kernel_zip/anykernel/version)"
 	echo " ${ON_BLUE}Current Kernel Version: $REV ${STD}"
 	echo " "
-	read -p " ${GREEN}Please type kernel version without 'R' (E.g: $REV) : " rev
-	if [ "${rev}" == "" ]; then
-		REV="$REV-$((RANDOM % 999))"
-		echo " "
-		echo " Using '$REV' as test version ${STD}"
-	else
-		REV=$rev
-		echo " "
-		echo " Version = $REV ${STD}"
-	fi
+	
+	# Hard-coded for CI: use version 15
+	REV=15
+	echo " Version = $REV ${STD}"
 	sleep 1
 }
 
@@ -496,22 +477,10 @@ USER() {
 	echo " ${ON_BLUE}Current build_user is $USER ${STD}"
 	echo " "
 
-	if [ "${BUILD_NO}" != "" ]; then
-		export user=""
-	else
-		read -p " ${GREEN}Please define build_user (E.g: $USER) : " user
-	fi
-
-	if [ "${user}" == "" ]; then
-		export KBUILD_BUILD_USER=$USER
-		echo " "
-		echo " Using '$USER' as build_user ${STD}"
-	else
-		export KBUILD_BUILD_USER=$user
-		USER=$user
-		echo " "
-		echo " build_user = $USER ${STD}"
-	fi
+	# Hard-coded for CI: use lotusify
+	export KBUILD_BUILD_USER=lotusify
+	USER=lotusify
+	echo " build_user = $USER ${STD}"
 	sleep 2
 }
 
@@ -535,8 +504,7 @@ SELINUX() {
 		export SELINUX_B=enforcing
 		export SELINUX_STATUS="$SELINUX_B"_
 	elif [ "${BUILD_NO}" == "" ]; then
-		# Setup selinux for individual build
-
+		# Hard-coded for CI: use enforcing
 		cp arch/arm64/boot/dts/exynos/dtb/exynos7885.dts arch/arm64/boot/dts/exynos/dtb/exynos7885.dts.bak
 		LINE="$((grep -n 'sel_boot_state' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts) | (gawk '{print $1}' FS=":"))"
 		echo " ${ON_BLUE}Choose which SElinux state you wish to have ${STD}"
@@ -545,40 +513,17 @@ SELINUX() {
 		echo " "
 		echo "  2) Build Eureka with PERMISSIVE SElinux"
 		echo " ${STD}"
-		read -n 1 -p " ${GREEN}Select your choice: " -s choice
-		case ${choice} in
-		1)
-			{
-				export SELINUX_B=enforcing
-				export SELINUX_STATUS="$SELINUX_B"_
-				sed -i $LINE's/.*/		sel_boot_state = <0>;/' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts
-				echo " "
-				echo " "
-				echo " ${GREEN}Enforcing chosen. Good choice :) ${STD}"
-				sleep 1
-			}
-			;;
-		2)
-			{
-				export SELINUX_B=permissive
-				export SELINUX_STATUS="$SELINUX_B"_
-				sed -i $LINE's/.*/		sel_boot_state = <1>;/' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts
-				echo " "
-				echo " "
-				echo " ${GREEN}Permissive chosen. Use with caution! ${STD}"
-				sleep 1
-			}
-			;;
-		*)
-			{
-				echo " "
-				echo " "
-				echo " ${RED}Invalid choice entered. Exiting... ${STD}"
-				sleep 1
-				exit
-			}
-			;;
-		esac
+		
+		# Hard-coded choice: 1 (Enforcing)
+		choice=1
+		echo " ${GREEN}Auto-selected: Enforcing SElinux ${STD}"
+		
+		export SELINUX_B=enforcing
+		export SELINUX_STATUS="$SELINUX_B"_
+		sed -i $LINE's/.*/		sel_boot_state = <0>;/' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts
+		echo " "
+		echo " ${GREEN}Enforcing chosen. Good choice :) ${STD}"
+		sleep 1
 	else
 		echo " "
 		echo " ${RED}SELinux will be read from DTB. Please ensure that you edited DTB before starting build. ${STD}"
@@ -758,46 +703,22 @@ OS_MENU() {
 		echo " "
 		echo " 2) $android_oneui3"
 		echo " "
-		read -n 1 -p " Please select your Android Version: ${STD}" -s menuos
-		case $menuos in
-		1)
-			{
-				echo " "
-				ANDROID_VAR="Android 10 (Q) / 11 (R) / 12 (S)"
-				echo " "
-				echo "${GREEN} $ANDROID_VAR chosen as Android Major Version ${STD}"
-				ANDROID=r
-				AND_VER=11
-				sed -i $LINE's/.*/			eureka_kernel_variant = <2>;/' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts
-				sleep 2
-				echo " "
-			}
-			;;
-		2)
-			{
-				echo " "
-				ANDROID_VAR="Android 11 (OneUI 3)"
-				echo " "
-				echo "${GREEN} $ANDROID_VAR chosen as Android Major Version ${STD}"
-				ANDROID=r
-				AND_VER=11
-				sed -i $LINE's/.*/			eureka_kernel_variant = <3>;/' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts
-				sed -i '55s/.*/        default y/' drivers/media/platform/exynos/Kconfig
-				ONEUI3=1
-				sleep 2
-				echo " "
-			}
-			;;
-		*)
-			{
-				echo " "
-				echo " ${RED}Exiting build script... ${STD}"
-				sleep 2
-				echo " "
-				exit
-			}
-			;;
-		esac
+		
+		# Hard-coded for CI: select option 2 (OneUI 3)
+		menuos=2
+		echo " ${GREEN}Auto-selected: OneUI 3 ${STD}"
+		
+		echo " "
+		ANDROID_VAR="Android 11 (OneUI 3)"
+		echo " "
+		echo "${GREEN} $ANDROID_VAR chosen as Android Major Version ${STD}"
+		ANDROID=r
+		AND_VER=11
+		sed -i $LINE's/.*/			eureka_kernel_variant = <3>;/' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts
+		sed -i '55s/.*/        default y/' drivers/media/platform/exynos/Kconfig
+		ONEUI3=1
+		sleep 2
+		echo " "
 	fi
 	sleep 1
 }
@@ -840,83 +761,15 @@ INDIVIDUAL() {
 	 Please select your device: '
 	echo " ${GREEN}"
 	menuoptions=("SM_A105X" "SM_A205X" "SM_A202X" "SM_A305X" "SM_A307X" "SM_A405X" "SM_A3050X" "SM_M205X" "Exit")
-	select menuoptions in "${menuoptions[@]}"; do
-		case $menuoptions in
-		"SM_A105X")
-			echo " ${STD}"
-			OS_MENU
-			echo " "
-			SM_A105X
-			COMMON_STEPS
-			break
-			;;
-		"SM_A205X")
-			echo " ${STD}"
-			OS_MENU
-			echo " "
-			SM_A205X
-			COMMON_STEPS
-			break
-			;;
-		"SM_A202X")
-			echo " ${STD}"
-			OS_MENU
-			echo " "
-			SM_A202X
-			COMMON_STEPS
-			break
-			;;
-		"SM_A305X")
-			echo " ${STD}"
-			OS_MENU
-			echo " "
-			SM_A305X
-			COMMON_STEPS
-			break
-			;;
-		"SM_A307X")
-			echo " ${STD}"
-			OS_MENU
-			echo " "
-			SM_A307X
-			COMMON_STEPS
-			break
-			;;
-		"SM_A405X")
-			echo " ${STD}"
-			OS_MENU
-			echo " "
-			SM_A405X
-			COMMON_STEPS
-			break
-			;;
-		"SM_A3050X")
-			echo " ${STD}"
-			OS_MENU
-			echo " "
-			SM_A3050X
-			COMMON_STEPS
-			break
-			;;
-		"SM_M205X")
-			echo " ${STD}"
-			OS_MENU
-			echo " "
-			SM_M205X
-			COMMON_STEPS
-			break
-			;;
-		"Exit")
-			echo " ${RED}Exiting build script... ${STD}"
-			sleep 2
-			exit
-			;;
-		*)
-			echo " "
-			echo " ${RED}Invalid option. Try again. ${STD}"
-			;;
-		esac
-	done
+	
+	# Hard-coded for CI: select SM_A105X (Galaxy A10)
+	menuoptions="SM_A105X"
+	echo " ${GREEN}Auto-selected: SM_A105X (Galaxy A10) ${STD}"
+	echo " ${STD}"
+	OS_MENU
+	echo " "
+	SM_A105X
+	COMMON_STEPS
 }
 
 
