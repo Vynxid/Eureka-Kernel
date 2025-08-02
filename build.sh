@@ -632,19 +632,29 @@ BUILD_ALL() {
 }
 
 COMMON_STEPS() {
-	clear
+	echo "DEBUG: Starting COMMON_STEPS function"
+	
+	# Skip clear command in CI environment
+	if [ "$CI" != "true" ]; then
+		clear
+	fi
+	
 	echo " ${ON_BLUE}Starting compilation ${STD}"
 	echo " "
 	echo " ${GREEN}Defconfig loaded: $DEFCONFIG ${STD}"
+	echo "DEBUG: About to call RENAME"
 	RENAME
 	sleep 1
 	echo " ${BLUE}"
+	echo "DEBUG: About to call CLANG_BUILD"
 	CLANG_BUILD
 	echo " ${STD}"
 	sleep 1
+	echo "DEBUG: Copying built files"
 	cp -f out/arch/$ARCH/boot/Image arch/$ARCH/boot/Image
 	cp -f out/arch/$ARCH/boot/dtb.img arch/$ARCH/boot/dtb.img
 	cp -f out/arch/$ARCH/boot/dtbo.img arch/$ARCH/boot/dtbo.img
+	echo "DEBUG: About to call ZIPPIFY"
 	ZIPPIFY
 	sleep 1
 	if [ "${BUILD_NO}" == "1" ]; then
@@ -724,20 +734,62 @@ OS_MENU() {
 }
 
 INDIVIDUAL() {
-	clear
+	echo "DEBUG: Starting INDIVIDUAL function"
+	
+	# Skip clear command in CI environment
+	if [ "$CI" != "true" ]; then
+		clear
+	fi
+	
+	echo "DEBUG: Calling TOOLCHAIN"
 	TOOLCHAIN
-	clear
+	
+	# Skip clear command in CI environment
+	if [ "$CI" != "true" ]; then
+		clear
+	fi
+	
+	echo "DEBUG: Calling CLANG_CLEAN"
 	CLANG_CLEAN
 	sleep 1
-	clear
+	
+	# Skip clear command in CI environment
+	if [ "$CI" != "true" ]; then
+		clear
+	fi
+	
+	echo "DEBUG: Calling PROCESSES"
 	PROCESSES
-	clear
+	
+	# Skip clear command in CI environment
+	if [ "$CI" != "true" ]; then
+		clear
+	fi
+	
+	echo "DEBUG: Calling ENTER_VERSION"
 	ENTER_VERSION
-	clear
+	
+	# Skip clear command in CI environment
+	if [ "$CI" != "true" ]; then
+		clear
+	fi
+	
+	echo "DEBUG: Calling USER"
 	USER
-	clear
+	
+	# Skip clear command in CI environment
+	if [ "$CI" != "true" ]; then
+		clear
+	fi
+	
+	echo "DEBUG: Calling SELINUX"
 	SELINUX
-	clear
+	
+	# Skip clear command in CI environment
+	if [ "$CI" != "true" ]; then
+		clear
+	fi
+	
 	echo "${BLUE}******************************************************"
 	echo "*                                                    *"
 	echo "*             $PROJECT_NAME Build Script             *"
@@ -766,9 +818,15 @@ INDIVIDUAL() {
 	menuoptions="SM_A105X"
 	echo " ${GREEN}Auto-selected: SM_A105X (Galaxy A10) ${STD}"
 	echo " ${STD}"
+	
+	echo "DEBUG: Calling OS_MENU"
 	OS_MENU
 	echo " "
+	
+	echo "DEBUG: Calling SM_A105X"
 	SM_A105X
+	
+	echo "DEBUG: Calling COMMON_STEPS"
 	COMMON_STEPS
 }
 
