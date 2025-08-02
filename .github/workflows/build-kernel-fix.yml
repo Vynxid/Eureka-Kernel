@@ -95,88 +95,112 @@ jobs:
     - name: Run Eureka build script
       run: |
         chmod +x build.sh # Ensure your script has execute permissions
-
-        # Create an expect script to automate user input for Galaxy A10
-        cat << 'EOF' > eureka_automation.exp
-        #!/usr/bin/expect -f
-        set timeout 1200
-        log_user 1
-
-        # Start the Eureka script
-        spawn ./build.sh
-
-        # Handle initial output and wait for first prompt
-        expect {
-            "*cores*" { 
-                send "\r"
-                exp_continue
-            }
-            "*compiler*" { 
-                send "\r"
-                exp_continue
-            }
-            "*Leave blank*" { 
-                send "\r"
-                exp_continue
-            }
-            "*kernel version*" { 
-                send "15\r"
-                exp_continue
-            }
-            "*without*" { 
-                send "15\r"
-                exp_continue
-            }
-            "*build_user*" { 
-                send "lotusify\r"
-                exp_continue
-            }
-            "*define*" { 
-                send "lotusify\r"
-                exp_continue
-            }
-            "*SElinux*" { 
-                send "1\r"
-                exp_continue
-            }
-            "*choice*" { 
-                send "1\r"
-                exp_continue
-            }
-            "*device*" { 
-                send "1\r"
-                exp_continue
-            }
-            "*select*" { 
-                send "1\r"
-                exp_continue
-            }
-            "*Android*" { 
-                send "2\r"
-                exp_continue
-            }
-            "*Version*" { 
-                send "2\r"
-                exp_continue
-            }
-            "unknown" {
-                puts "Script encountered unknown command, continuing..."
-                exp_continue
-            }
-            eof { 
-                puts "Script completed"
-                exit 0
-            }
-            timeout { 
-                puts "Script execution completed or timed out"
-                exit 0
-            }
-        }
-        EOF
         
-        # Give execute permission and run the expect script
-        chmod +x eureka_automation.exp
-        timeout 3600 ./eureka_automation.exp || echo "Script execution finished"
+        # Set environment variables that the script expects
+        export KBUILD_BUILD_USER=lotusify
+        export BUILD_NO=2  # Set to build individual device
+        export REV=15      # Kernel version
+        export USER=lotusify
+        export SELINUX_B=enforcing
+        export SELINUX_STATUS=enforcing_
+        export ANDROID=r
+        export AND_VER=11
+        export ONEUI3=1
+        export CODENAME=A105
+        export DEFCONFIG=exynos7885-a10_defconfig
+        
+        # Try auto mode first, if that doesn't work fall back to expect
+        echo "Attempting to run in auto mode..."
+        if ./build.sh auto ems 2>&1 | tee build_output.log; then
+            echo "Auto mode succeeded"
+        else
+            echo "Auto mode failed, trying manual approach..."
+            
+            # Create an expect script as fallback
+            cat << 'EOF' > eureka_automation.exp
+            #!/usr/bin/expect -f
+            set timeout 1200
+            log_user 1
+
+            # Start the Eureka script
+            spawn ./build.sh
+
+            # Handle all prompts in sequence
+            expect {
+                "*cores*" { 
+                    send "\r"
+                    exp_continue
+                }
+                "*compiler*" { 
+                    send "\r"
+                    exp_continue
+                }
+                "*Leave blank*" { 
+                    send "\r"
+                    exp_continue
+                }
+                "*kernel version*" { 
+                    send "15\r"
+                    exp_continue
+                }
+                "*without*" { 
+                    send "15\r"
+                    exp_continue
+                }
+                "*build_user*" { 
+                    send "lotusify\r"
+                    exp_continue
+                }
+                "*define*" { 
+                    send "lotusify\r"
+                    exp_continue
+                }
+                "*SElinux*" { 
+                    send "1\r"
+                    exp_continue
+                }
+                "*choice*" { 
+                    send "1\r"
+                    exp_continue
+                }
+                "*device*" { 
+                    send "1\r"
+                    exp_continue
+                }
+                "*select*" { 
+                    send "1\r"
+                    exp_continue
+                }
+                "*Android*" { 
+                    send "2\r"
+                    exp_continue
+                }
+                "*Version*" { 
+                    send "2\r"
+                    exp_continue
+                }
+                "*ERROR*" {
+                    puts "Script encountered error"
+                    exit 1
+                }
+                "unknown" {
+                    puts "Script encountered unknown command, continuing..."
+                    exp_continue
+                }
+                eof { 
+                    puts "Script completed"
+                    exit 0
+                }
+                timeout { 
+                    puts "Script execution completed or timed out"
+                    exit 0
+                }
+            }
+            EOF
+            
+            chmod +x eureka_automation.exp
+            timeout 3600 ./eureka_automation.exp || echo "Script execution finished"
+        fi
 
     - name: Package kernel
       run: |
