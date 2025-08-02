@@ -87,35 +87,59 @@ jobs:
         cat << 'EOF' > eureka_automation.exp
         #!/usr/bin/expect -f
         set timeout 600
+        exp_internal 1
 
         # Start the Eureka script
         spawn ./build.sh
 
         # Enter number of cores (empty to use all)
-        expect "Please enter how many cores to be used by compiler (Leave blank to use all cores) :"
-        send "\r"
+        expect {
+            "*cores*" { send "\r"; exp_continue }
+            "*compiler*" { send "\r"; exp_continue }
+            "*Leave blank*" { send "\r"; exp_continue }
+            timeout { puts "Timeout waiting for cores prompt"; exit 1 }
+        }
 
         # Enter kernel version (15)
-        expect "Please type kernel version without 'R'"
-        send "15\r"
+        expect {
+            "*kernel version*" { send "15\r"; exp_continue }
+            "*without*" { send "15\r"; exp_continue }
+            timeout { puts "Timeout waiting for version prompt"; exit 1 }
+        }
 
         # Enter build_user (lotusify)
-        expect "Please define build_user (E.g:"
-        send "lotusify\r"
+        expect {
+            "*build_user*" { send "lotusify\r"; exp_continue }
+            "*define*" { send "lotusify\r"; exp_continue }
+            timeout { puts "Timeout waiting for build_user prompt"; exit 1 }
+        }
         
         # Choose SELinux state (1 for Enforcing)
-        expect "Choose which SElinux state you wish to have"
-        send "1\r"
+        expect {
+            "*SElinux*" { send "1\r"; exp_continue }
+            "*choice*" { send "1\r"; exp_continue }
+            timeout { puts "Timeout waiting for SELinux prompt"; exit 1 }
+        }
 
         # Select device SM_A105X (1)
-        expect "Please select your device:"
-        send "1\r"
+        expect {
+            "*device*" { send "1\r"; exp_continue }
+            "*select*" { send "1\r"; exp_continue }
+            timeout { puts "Timeout waiting for device prompt"; exit 1 }
+        }
         
         # Select Android Version OneUI 3 (2)
-        expect "Please select your Android Version:"
-        send "2\r"
+        expect {
+            "*Android*" { send "2\r"; exp_continue }
+            "*Version*" { send "2\r"; exp_continue }
+            timeout { puts "Timeout waiting for Android version prompt"; exit 1 }
+        }
 
-        expect eof
+        # Wait for completion
+        expect {
+            eof { puts "Script completed successfully" }
+            timeout { puts "Script timed out"; exit 1 }
+        }
         EOF
         
         # Give execute permission and run the expect script
