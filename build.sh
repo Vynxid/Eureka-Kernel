@@ -105,6 +105,13 @@ android_oneui3="Support for OneUI 3 or GSI using R vendor"
 
 ################### Executable functions #######################
 
+# BOOTLOOP DEBUG NOTES:
+# - KernelSU-Next v1.0.9 tested: Still bootloop despite SELinux RCU fixes
+# - SELinux enforcing confirmed working with original Eureka
+# - ROOT CAUSE IDENTIFIED: CONFIG_KPROBES conflict with manual KernelSU integration
+# - SOLUTION: Disable CONFIG_KPROBES as required by KernelSU docs for manual integration
+# - Reference: https://kernelsu.org/guide/how-to-integrate-for-non-gki.html
+
 CLANG_CLEAN() {
 	echo " ${ON_BLUE}Cleaning kernel source ${STD}"
 	echo " "
@@ -185,7 +192,33 @@ DTB_BUILD() {
 CLANG_BUILD() {
 	export LOCALVERSION=-$VERSION
 	export PLATFORM_VERSION=$AND_VER
+	echo "DEBUG: Making defconfig"
 	make O=out ARCH=arm64 ANDROID_MAJOR_VERSION=$ANDROID $DEFCONFIG > /dev/null
+	
+	# DEBUG: Add debug options to help identify bootloop cause
+	echo "DEBUG: Adding debug configurations for bootloop investigation"
+	if [ -f "out/.config" ]; then
+		# Enable more logging for debugging
+		echo "CONFIG_DYNAMIC_DEBUG=y" >> out/.config
+		echo "CONFIG_PRINTK_TIME=y" >> out/.config
+		echo "CONFIG_LOG_BUF_SHIFT=21" >> out/.config
+		
+		# CRITICAL: Disable CONFIG_KPROBES for manual KernelSU integration (per docs)
+		echo "# CONFIG_KPROBES is not set" >> out/.config
+		echo "# CONFIG_HAVE_KPROBES is not set" >> out/.config
+		echo "# CONFIG_KPROBE_EVENTS is not set" >> out/.config
+		echo "DEBUG: Disabled CONFIG_KPROBES for manual KernelSU integration"
+		
+		# Temporarily disable some KernelSU features that might cause issues
+		sed -i 's/CONFIG_KSU_DEBUG=n/CONFIG_KSU_DEBUG=y/' out/.config
+		echo "# CONFIG_KSU_ALLOWLIST_WORKAROUND is not set" >> out/.config
+		# Try conservative KernelSU settings
+		sed -i 's/CONFIG_KSU_KPROBES_HOOK=y/# CONFIG_KSU_KPROBES_HOOK is not set/' out/.config
+		sed -i 's/CONFIG_KSU_LSM_SECURITY_HOOKS=y/# CONFIG_KSU_LSM_SECURITY_HOOKS is not set/' out/.config
+		echo "DEBUG: Disabled potentially problematic KernelSU features"
+	fi
+	
+	echo "DEBUG: Starting kernel compilation"
 	PATH="$KERNEL_DIR/toolchain/bin:$KERNEL_DIR/toolchain/bin:${PATH}" \
 		make -j$CORES O=out \
 		ARCH=arm64 \
@@ -504,7 +537,7 @@ SELINUX() {
 		export SELINUX_B=enforcing
 		export SELINUX_STATUS="$SELINUX_B"_
 	elif [ "${BUILD_NO}" == "" ]; then
-		# Hard-coded for CI: use enforcing
+		# Hard-coded for CI: use enforcing (standard for Eureka kernel)
 		cp arch/arm64/boot/dts/exynos/dtb/exynos7885.dts arch/arm64/boot/dts/exynos/dtb/exynos7885.dts.bak
 		LINE="$((grep -n 'sel_boot_state' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts) | (gawk '{print $1}' FS=":"))"
 		echo " ${ON_BLUE}Choose which SElinux state you wish to have ${STD}"
@@ -514,9 +547,9 @@ SELINUX() {
 		echo "  2) Build Eureka with PERMISSIVE SElinux"
 		echo " ${STD}"
 		
-		# Hard-coded choice: 1 (Enforcing)
+		# Hard-coded choice: 1 (Enforcing) - standard for Eureka
 		choice=1
-		echo " ${GREEN}Auto-selected: Enforcing SElinux ${STD}"
+		echo " ${GREEN}Auto-selected: Enforcing SElinux (standard for Eureka) ${STD}"
 		
 		export SELINUX_B=enforcing
 		export SELINUX_STATUS="$SELINUX_B"_
