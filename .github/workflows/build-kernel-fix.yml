@@ -94,12 +94,12 @@ jobs:
 
     - name: Run Eureka build script
       run: |
-        chmod +x build.sh # Ensure your script has execute permissions
+        chmod +x build.sh
         
         # Set environment variables that the script expects
         export KBUILD_BUILD_USER=lotusify
-        export BUILD_NO=2  # Set to build individual device
-        export REV=15      # Kernel version
+        export BUILD_NO=2
+        export REV=15
         export USER=lotusify
         export SELINUX_B=enforcing
         export SELINUX_STATUS=enforcing_
@@ -109,94 +109,41 @@ jobs:
         export CODENAME=A105
         export DEFCONFIG=exynos7885-a10_defconfig
         
-        # Try auto mode first, if that doesn't work fall back to expect
+        # Try auto mode first
         echo "Attempting to run in auto mode..."
         if ./build.sh auto ems 2>&1 | tee build_output.log; then
             echo "Auto mode succeeded"
         else
             echo "Auto mode failed, trying manual approach..."
             
-            # Create an expect script as fallback
-            cat << 'EOF' > eureka_automation.exp
-            #!/usr/bin/expect -f
-            set timeout 1200
-            log_user 1
-
-            # Start the Eureka script
-            spawn ./build.sh
-
-            # Handle all prompts in sequence
-            expect {
-                "*cores*" { 
-                    send "\r"
-                    exp_continue
-                }
-                "*compiler*" { 
-                    send "\r"
-                    exp_continue
-                }
-                "*Leave blank*" { 
-                    send "\r"
-                    exp_continue
-                }
-                "*kernel version*" { 
-                    send "15\r"
-                    exp_continue
-                }
-                "*without*" { 
-                    send "15\r"
-                    exp_continue
-                }
-                "*build_user*" { 
-                    send "lotusify\r"
-                    exp_continue
-                }
-                "*define*" { 
-                    send "lotusify\r"
-                    exp_continue
-                }
-                "*SElinux*" { 
-                    send "1\r"
-                    exp_continue
-                }
-                "*choice*" { 
-                    send "1\r"
-                    exp_continue
-                }
-                "*device*" { 
-                    send "1\r"
-                    exp_continue
-                }
-                "*select*" { 
-                    send "1\r"
-                    exp_continue
-                }
-                "*Android*" { 
-                    send "2\r"
-                    exp_continue
-                }
-                "*Version*" { 
-                    send "2\r"
-                    exp_continue
-                }
-                "*ERROR*" {
-                    puts "Script encountered error"
-                    exit 1
-                }
-                "unknown" {
-                    puts "Script encountered unknown command, continuing..."
-                    exp_continue
-                }
-                eof { 
-                    puts "Script completed"
-                    exit 0
-                }
-                timeout { 
-                    puts "Script execution completed or timed out"
-                    exit 0
-                }
-            }
-            EOF
+            # Create expect script
+            cat > eureka_automation.exp << 'EOFSCRIPT'
+        #!/usr/bin/expect -f
+        set timeout 1200
+        log_user 1
+        
+        spawn ./build.sh
+        
+        expect {
+            "*cores*" { send "\r"; exp_continue }
+            "*compiler*" { send "\r"; exp_continue }
+            "*Leave blank*" { send "\r"; exp_continue }
+            "*kernel version*" { send "15\r"; exp_continue }
+            "*without*" { send "15\r"; exp_continue }
+            "*build_user*" { send "lotusify\r"; exp_continue }
+            "*define*" { send "lotusify\r"; exp_continue }
+            "*SElinux*" { send "1\r"; exp_continue }
+            "*choice*" { send "1\r"; exp_continue }
+            "*device*" { send "1\r"; exp_continue }
+            "*select*" { send "1\r"; exp_continue }
+            "*Android*" { send "2\r"; exp_continue }
+            "*Version*" { send "2\r"; exp_continue }
+            "*ERROR*" { puts "Error encountered"; exit 1 }
+            "unknown" { puts "Unknown command, continuing..."; exp_continue }
+            eof { puts "Script completed"; exit 0 }
+            timeout { puts "Timeout reached"; exit 0 }
+        }
+        EOFSCRIPT
             
             chmod +x eureka_automation.exp
             timeout 3600 ./eureka_automation.exp || echo "Script execution finished"
@@ -205,7 +152,6 @@ jobs:
     - name: Package kernel
       run: |
         echo "Packaging and preparing for upload..."
-        # Check if kernel zip was created successfully
         if [ -d "kernel_zip/anykernel" ]; then
           echo "Kernel build completed successfully"
           ls -la kernel_zip/anykernel/
@@ -217,7 +163,6 @@ jobs:
     - name: Upload kernel to artifact
       uses: actions/upload-artifact@v4
       with:
-        # The artifact will contain the flashable zip generated by the script
         name: Eureka_Kernel_A10_R15_${{ github.run_number }}
         path: |
           kernel_zip/anykernel/
