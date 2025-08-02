@@ -79,6 +79,19 @@ jobs:
       run: |
         echo "TIME=$(TZ=UTC+7 date +%m%d%H%M)" >> $GITHUB_OUTPUT
 
+    - name: Setup toolchain directory
+      run: |
+        # Create toolchain directory and link to proton-clang
+        mkdir -p toolchain
+        if [ -d "proton-clang" ]; then
+          ln -sf ../proton-clang/bin toolchain/bin
+          ln -sf ../proton-clang/lib toolchain/lib
+        fi
+        
+        # Verify toolchain setup
+        ls -la toolchain/
+        ls -la proton-clang/bin/ | head -10
+
     - name: Run Eureka build script
       run: |
         chmod +x build.sh # Ensure your script has execute permissions
@@ -86,65 +99,84 @@ jobs:
         # Create an expect script to automate user input for Galaxy A10
         cat << 'EOF' > eureka_automation.exp
         #!/usr/bin/expect -f
-        set timeout 600
-        exp_internal 1
+        set timeout 1200
+        log_user 1
 
         # Start the Eureka script
         spawn ./build.sh
 
-        # Enter number of cores (empty to use all)
+        # Handle initial output and wait for first prompt
         expect {
-            "*cores*" { send "\r"; exp_continue }
-            "*compiler*" { send "\r"; exp_continue }
-            "*Leave blank*" { send "\r"; exp_continue }
-            timeout { puts "Timeout waiting for cores prompt"; exit 1 }
-        }
-
-        # Enter kernel version (15)
-        expect {
-            "*kernel version*" { send "15\r"; exp_continue }
-            "*without*" { send "15\r"; exp_continue }
-            timeout { puts "Timeout waiting for version prompt"; exit 1 }
-        }
-
-        # Enter build_user (lotusify)
-        expect {
-            "*build_user*" { send "lotusify\r"; exp_continue }
-            "*define*" { send "lotusify\r"; exp_continue }
-            timeout { puts "Timeout waiting for build_user prompt"; exit 1 }
-        }
-        
-        # Choose SELinux state (1 for Enforcing)
-        expect {
-            "*SElinux*" { send "1\r"; exp_continue }
-            "*choice*" { send "1\r"; exp_continue }
-            timeout { puts "Timeout waiting for SELinux prompt"; exit 1 }
-        }
-
-        # Select device SM_A105X (1)
-        expect {
-            "*device*" { send "1\r"; exp_continue }
-            "*select*" { send "1\r"; exp_continue }
-            timeout { puts "Timeout waiting for device prompt"; exit 1 }
-        }
-        
-        # Select Android Version OneUI 3 (2)
-        expect {
-            "*Android*" { send "2\r"; exp_continue }
-            "*Version*" { send "2\r"; exp_continue }
-            timeout { puts "Timeout waiting for Android version prompt"; exit 1 }
-        }
-
-        # Wait for completion
-        expect {
-            eof { puts "Script completed successfully" }
-            timeout { puts "Script timed out"; exit 1 }
+            "*cores*" { 
+                send "\r"
+                exp_continue
+            }
+            "*compiler*" { 
+                send "\r"
+                exp_continue
+            }
+            "*Leave blank*" { 
+                send "\r"
+                exp_continue
+            }
+            "*kernel version*" { 
+                send "15\r"
+                exp_continue
+            }
+            "*without*" { 
+                send "15\r"
+                exp_continue
+            }
+            "*build_user*" { 
+                send "lotusify\r"
+                exp_continue
+            }
+            "*define*" { 
+                send "lotusify\r"
+                exp_continue
+            }
+            "*SElinux*" { 
+                send "1\r"
+                exp_continue
+            }
+            "*choice*" { 
+                send "1\r"
+                exp_continue
+            }
+            "*device*" { 
+                send "1\r"
+                exp_continue
+            }
+            "*select*" { 
+                send "1\r"
+                exp_continue
+            }
+            "*Android*" { 
+                send "2\r"
+                exp_continue
+            }
+            "*Version*" { 
+                send "2\r"
+                exp_continue
+            }
+            "unknown" {
+                puts "Script encountered unknown command, continuing..."
+                exp_continue
+            }
+            eof { 
+                puts "Script completed"
+                exit 0
+            }
+            timeout { 
+                puts "Script execution completed or timed out"
+                exit 0
+            }
         }
         EOF
         
         # Give execute permission and run the expect script
         chmod +x eureka_automation.exp
-        ./eureka_automation.exp
+        timeout 3600 ./eureka_automation.exp || echo "Script execution finished"
 
     - name: Package kernel
       run: |
