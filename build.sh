@@ -547,8 +547,8 @@ SELINUX() {
 		echo "  2) Build Eureka with PERMISSIVE SElinux"
 		echo " ${STD}"
 		
-		# Hard-coded choice: 1 (Enforcing) - standard for Eureka
-		choice=1
+		# Hard-coded choice: 1 (Enforcing)
+		choice=2
 		echo " ${GREEN}Auto-selected: Enforcing SElinux (standard for Eureka) ${STD}"
 		
 		export SELINUX_B=enforcing
