@@ -218,9 +218,11 @@ CLANG_BUILD() {
 		
 		# Add or enable new CONFIG_KSU lines
 		echo "CONFIG_KSU=y" >> out/.config
+		echo "CONFIG_KSU_MANUAL_HOOK=y" >> out/.config
 		echo "CONFIG_KSU_LSM_SECURITY_HOOKS=y" >> out/.config
 		echo "CONFIG_KSU_DEBUG=y" >> out/.config
 		echo "CONFIG_KSU_SU_DEBUG=y" >> out/.config
+		echo "CONFIG_KSU_64BIT=y" >> out/.config
 		echo "CONFIG_KALLSYMS=y" >> out/.config
 		echo "CONFIG_KALLSYMS_ALL=y" >> out/.config
 		
