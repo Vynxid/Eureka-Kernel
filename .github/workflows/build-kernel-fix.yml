@@ -35,14 +35,6 @@ jobs:
         ls -la drivers/kernelsu/
         ls -la drivers/kernelsu/Kconfig || echo "Kconfig not found"
 
-    - name: Patch KernelSU manual scope-minimized hooks into the kernel source
-      run: |
-          # Clone the repository which contains the patch
-          git clone --depth=1 https://github.com/devnoname120/kernelsu-coccinelle.git
-          
-          # Patch the kernel source with scope-minimized hooks
-          # Use the apply.sh script provided by the kernelsu-coccinelle repo
-          ./kernelsu-coccinelle/scope-minimized-hooks/apply.sh .
       
           # Cleanup
           rm -rf ./kernelsu-coccinelle/
@@ -73,21 +65,31 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update -y
+        sudo apt-get build-dep -y coccinelle
         sudo apt install -y \
           gcc-aarch64-linux-gnu \
           gcc-arm-linux-gnueabi \
           binutils make python3 python2 libssl-dev build-essential \
           bc bison flex unzip ca-certificates xz-utils \
-          mkbootimg cpio device-tree-compiler git git-lfs
+          mkbootimg cpio device-tree-compiler git git-lfs coccinelle
         
         # Only download proton-clang if not cached
         if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
           rm -rf proton-clang
           git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
         fi
-        
-        make clean
-        make mrproper
+
+    - name: Patch KernelSU manual scope-minimized hooks into the kernel source
+      run: |
+          # Clone the repository which contains the patch
+          git clone --depth=1 https://github.com/devnoname120/kernelsu-coccinelle.git
+          
+          # Patch the kernel source with scope-minimized hooks
+          # Use the apply.sh script provided by the kernelsu-coccinelle repo
+          ./kernelsu-coccinelle/scope-minimized-hooks/apply.sh .
+          
+          make clean
+          make mrproper
 
     - name: GetTime
       id: get_time
