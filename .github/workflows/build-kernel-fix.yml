@@ -88,6 +88,7 @@ jobs:
 
     # --- START OF COCICNELLE PATCHING AND CLEANUP ---
     - name: 'Patch kernel with Coccinelle hooks and clean'
+      working-directory: '/home/runner/work/Eureka-Kernel/Eureka-Kernel/'
       run: |
         # Install coccinelle dependencies
         sudo apt-get build-dep -y coccinelle
