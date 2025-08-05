@@ -64,21 +64,27 @@ jobs:
 
     - name: Install dependencies
       run: |
-            sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources~
-            sudo sed -Ei 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
-            sudo apt-get update -y
-            sudo apt install -y \
-            gcc-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabi \
-            binutils make python3 python2 libssl-dev build-essential \
-            bc bison flex unzip ca-certificates xz-utils \
-            mkbootimg cpio device-tree-compiler git git-lfs
-          
-            # Only download proton-clang if not cached
-            if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
-              rm -rf proton-clang
-              git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
-            fi
+              # Check if ubuntu.sources file exists, otherwise use sources.list
+                if [ -f "/etc/apt/sources.list.d/ubuntu.sources" ]; then
+                  sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources~
+                  sudo sed -Ei 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
+                else
+                  sudo cp /etc/apt/sources.list /etc/apt/sources.list~
+                  sudo sed -Ei 's/^# deb-src /deb-src /' /etc/apt/sources.list
+                fi
+              sudo apt-get update -y
+              sudo apt install -y \
+              gcc-aarch64-linux-gnu \
+              gcc-arm-linux-gnueabi \
+              binutils make python3 python2 libssl-dev build-essential \
+              bc bison flex unzip ca-certificates xz-utils \
+              mkbootimg cpio device-tree-compiler git git-lfs
+            
+              # Only download proton-clang if not cached
+              if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
+                rm -rf proton-clang
+                git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
+              fi
 
     - name: Patch KernelSU manual scope-minimized hooks into the kernel source
       run: |
