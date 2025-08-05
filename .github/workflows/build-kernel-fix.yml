@@ -39,10 +39,14 @@ jobs:
       run: |
           # Clone the repository which contains the patch
           git clone --depth=1 https://github.com/devnoname120/kernelsu-coccinelle.git
+          
           # Patch the kernel source with scope-minimized hooks
-          for p in fs drivers/input drivers/tty arch/arm/kernel; do spatch --sp-file ./kernelsu-coccinelle/scope-minimized-hooks/kernelsu-scope-minimized.cocci --in-place --linux-spacing "$p"; done
+          # Use the apply.sh script provided by the kernelsu-coccinelle repo
+          ./kernelsu-coccinelle/scope-minimized-hooks/apply.sh .
+      
           # Cleanup
           rm -rf ./kernelsu-coccinelle/
+      
           # Delete files that may conflict with kernel functionality
           rm -rf ./android/abi_gki_protected_exports*
 
