@@ -209,13 +209,43 @@ CLANG_BUILD() {
 		echo "# CONFIG_KPROBE_EVENTS is not set" >> out/.config
 		echo "DEBUG: Disabled CONFIG_KPROBES for manual KernelSU integration"
 		
-		# Temporarily disable some KernelSU features that might cause issues
-		sed -i 's/CONFIG_KSU_DEBUG=n/CONFIG_KSU_DEBUG=y/' out/.config
-		echo "# CONFIG_KSU_ALLOWLIST_WORKAROUND is not set" >> out/.config
-		# Try conservative KernelSU settings
-		sed -i 's/CONFIG_KSU_KPROBES_HOOK=y/# CONFIG_KSU_KPROBES_HOOK is not set/' out/.config
-		sed -i 's/CONFIG_KSU_LSM_SECURITY_HOOKS=y/# CONFIG_KSU_LSM_SECURITY_HOOKS is not set/' out/.config
-		echo "DEBUG: Disabled potentially problematic KernelSU features"
+		# Remove old CONFIG_KSU lines to prevent duplicates
+		sed -i '/^CONFIG_KSU=/d' out/.config
+		sed -i '/^CONFIG_KSU_DEBUG=/d' out/.config
+		sed -i '/^CONFIG_KSU_SU_DEBUG=/d' out/.config
+		sed -i '/^CONFIG_CONFIG_KALLSYMS=/d' out/.config
+		sed -i '/^CONFIG_KALLSYMS_ALL=/d' out/.config
+		
+		# Add or enable new CONFIG_KSU lines
+		echo "CONFIG_KSU=y" >> out/.config
+		echo "CONFIG_KSU_LSM_SECURITY_HOOKS=y" >> out/.config
+		echo "CONFIG_KSU_DEBUG=y" >> out/.config
+		echo "CONFIG_KSU_SU_DEBUG=y" >> out/.config
+		echo "CONFIG_KALLSYMS=y" >> out/.config
+		echo "CONFIG_KALLSYMS_ALL=y" >> out/.config
+		
+		# Ensure Kprobes-related KSU configs are correctly disabled
+		sed -i '/^CONFIG_KSU_KPROBES_HOOK=/d' out/.config
+		echo "# CONFIG_KSU_KPROBES_HOOK is not set" >> out/.config
+
+		echo "DEBUG: Verifying critical KernelSU configurations..."
+		if ! grep -q "CONFIG_KSU=y" out/.config; then
+			echo "ERROR: CONFIG_KSU is not set to 'y'! KernelSU will not be built."
+			exit 1
+		fi
+		if ! grep -q "CONFIG_KSU_LSM_SECURITY_HOOKS=y" out/.config; then
+			echo "ERROR: CONFIG_KSU_LSM_SECURITY_HOOKS is not set to 'y'! Manual hooks will not work."
+			exit 1
+		fi
+		if grep -q "CONFIG_KPROBES=y" out/.config; then
+			echo "ERROR: CONFIG_KPROBES is set to 'y', but it should be 'n' for manual hooks!"
+			exit 1
+		fi
+		if grep -q "CONFIG_KSU_KPROBES_HOOK=y" out/.config; then
+			echo "ERROR: CONFIG_KSU_KPROBES_HOOK is set to 'y', but it should be 'n' for manual hooks!"
+			exit 1
+		fi
+		echo "DEBUG: All critical KernelSU configs verified. Continuing build."
 	fi
 	
 	echo "DEBUG: Starting kernel compilation"
