@@ -102,14 +102,13 @@ jobs:
         sudo make -j$(nproc --all) install
         cd .. # Return to root directory
 
-        # Clone the repository with the patches
+        # Clone the repository which contains the patch
         git clone --depth=1 https://github.com/devnoname120/kernelsu-coccinelle.git
-        
-        # Apply the patches using the provided script
-        ./kernelsu-coccinelle/scope-minimized-hooks/apply.sh .
-        
-        # Cleanup temporary files
+        # Patch the kernel source with scope-minimized hooks
+        for p in fs drivers/input drivers/tty arch/arm/kernel; do spatch --sp-file ./kernelsu-coccinelle/scope-minimized-hooks/kernelsu-scope-minimized.cocci --in-place --linux-spacing "$p"; done
+        # Cleanup
         rm -rf ./kernelsu-coccinelle/
+        # Delete files that may conflict with kernel functionality
         rm -rf ./android/abi_gki_protected_exports*
         
         # Run make clean/mrproper here, AFTER all patches have been applied
