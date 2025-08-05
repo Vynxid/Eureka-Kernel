@@ -2,56 +2,6 @@ name: Build Kernel with Eureka Script
 
 on:
   workflow_dispatch:
-    inputs:
-      KSU_GIT:
-        description: 'Link to KernelSU git repository (leave it be for KernelSU-Next or if unsure):'
-        required: false
-        default: 'https://github.com/KernelSU-Next/KernelSU-Next.git'
-      KSU_GIT_BRANCH:
-        description: 'Preferred branch of the preferred KernelSU git repository (leave it be for KernelSU-Next, otherwise must define):'
-        required: false
-        default: 'next'
-      INCLUDE_SUSFS:
-        type: boolean
-        description: 'Build with SuSFS (leave it be if unsure)?'
-        required: false
-        default: false
-      KERNEL_GIT:
-        description: 'Link to the git repository of your preferred kernel source:'
-        required: true
-        default: 'https://github.com/lotusify/Eureka-Kernel' # Changed to hardcoded for your repo
-      KERNEL_GIT_BRANCH:
-        description: 'Preferred branch of the kernel source git repository:'
-        required: true
-        default: 'R15-OneUI-KSUN' # Changed to hardcoded for your branch
-      KERNEL_ARCH:
-        type: choice
-        description: 'Kernel architecture (seperate from Android architecture):'
-        required: true
-        default: 'arm64'
-        options:
-          - 'arm64'
-          - 'arm'
-      KERNEL_COMPILER:
-        type: choice
-        description: 'Compiler choice:'
-        required: true
-        default: 'Clang/LLVM'
-        options:
-          - 'Clang/LLVM'
-          - 'GCC/Binutils'
-          - 'Clang/Binutils'
-          - 'GCC/LLVM'
-      KERNEL_COMPILER_TOOLCHAIN:
-        description: 'Direct link to custom compiler prebuilt toolchain (leave blank if not required):'
-        required: false
-      KERNEL_COMPILER_PREFIX:
-        description: 'Path prefix for custom prebuilt toolchain (must define if custom toolchain, otherwise leave blank):'
-        required: false
-      KERNEL_CONFIGS:
-        description: 'Space-seperated list of kernel configs by order (!IMPORTANT AND DANGEROUS!):'
-        required: true
-        default: 'exynos7885-a10_defconfig' # Changed to hardcoded for your config
 
 jobs:
   build:
@@ -62,210 +12,197 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_MAXSIZE: "2G"
       CCACHE_HARDLINK: "true"
+      # Fixed KERNEL_DEFCONFIG for Samsung Galaxy A10
       KERNEL_DEFCONFIG: "exynos7885-a10_defconfig"
       
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          submodules: recursive
-          fetch-depth: 100
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+        fetch-depth: 100
 
-      - name: Initialize submodules
-        run: git submodule update --init --recursive
-      
-      # --- START OF PATCHING KERNELSU ---
-      - name: 'Patch KernelSU repository into the kernel source'
-        run: |
-          # Revert any old KernelSU patches and existing KernelSU-Next setup
-          rm -rf KernelSU-Next KernelSU drivers/kernelsu
-          grep -q "kernelsu" "./drivers/Makefile" && sed -i '/kernelsu/d' "./drivers/Makefile" && echo "[-] Makefile reverted."
-          grep -q "drivers/kernelsu/Kconfig" "./drivers/Kconfig" && sed -i '/drivers\/kernelsu\/Kconfig/d' "./drivers/Kconfig" && echo "[-] Kconfig reverted."
+    - name: Initialize submodules
+      run: git submodule update --init --recursive
 
-          # Clone the KernelSU repository
-          KSU_GIT='https://github.com/KernelSU-Next/KernelSU-Next.git'
-          KSU_GIT_BRANCH='next'
-          if git ls-remote "$KSU_GIT" | grep -w "$KSU_GIT_BRANCH" > /dev/null; then
-            echo "--- KernelSU git link and branch points to a valid git repo! ---"
-            git submodule add --force -b "$KSU_GIT_BRANCH" "$KSU_GIT" ./KernelSU
-          else
-            echo "--- Invalid KernelSU git link or branch. ---"
-            exit 1
-          fi
+    - name: Setup KernelSU-Next
+      run: |
+        # Clean up any old KernelSU setup to prevent conflicts
+		[ -L "drivers/kernelsu" ] && rm "drivers/kernelsu"
+		grep -q "kernelsu" "./drivers/Makefile" && sed -i '/kernelsu/d' "./drivers/Makefile"
+		grep -q "source \"drivers/kernelsu/Kconfig\"" "./drivers/Kconfig" && sed -i '/drivers\/kernelsu\/Kconfig/d' "./drivers/Kconfig"
+		if [ -d "./KernelSU*" ]; then
+		  rm -rf "./KernelSU*"
+		fi
 
-          # Apply KernelSU patches
-          ln -sf ../KernelSU/kernel ./drivers/kernelsu
-          grep -q "kernelsu" "./drivers/Makefile" || printf "\nobj-\$(CONFIG_KSU) += kernelsu/\n" >> "./drivers/Makefile" && echo "[+] Modified Makefile."
-          grep -q "source \"drivers/kernelsu/Kconfig\"" "./drivers/Kconfig" || sed -i "/endmenu/i\source \"drivers/kernelsu/Kconfig\"" "./drivers/Kconfig" && echo "[+] Modified Kconfig."
-          echo '[+] Done.'
+		# Add KernelSU repository as a submodule
+		git submodule add --force -b next https://github.com/KernelSU-Next/KernelSU-Next.git ./KernelSU
 
-      - name: 'Patch KernelSU manual scope-minimized hooks into the kernel source'
-        run: |
-          # Clone the repository which contains the patch
-          git clone --depth=1 https://github.com/devnoname120/kernelsu-coccinelle.git
+		# Apply KernelSU patches to kernel source
+		ln -sf ../KernelSU/kernel ./drivers/kernelsu
+		grep -q "kernelsu" "./drivers/Makefile" || printf "\nobj-\$(CONFIG_KSU) += kernelsu/\n" >> "./drivers/Makefile"
+		grep -q "source \"drivers/kernelsu/Kconfig\"" "./drivers/Kconfig" || sed -i "/endmenu/i\source \"drivers/kernelsu/Kconfig\"" "./drivers/Kconfig"
 
-          # Patch the kernel source with scope-minimized hooks
-          for p in fs drivers/input drivers/tty arch/arm/kernel; do spatch --sp-file ./kernelsu-coccinelle/scope-minimized-hooks/kernelsu-scope-minimized.cocci --in-place --linux-spacing "$p"; done
+		# Apply manual scope-minimized hooks with coccinelle
+		git clone --depth=1 https://github.com/devnoname120/kernelsu-coccinelle.git
+		for p in fs drivers/input drivers/tty arch/arm/kernel; do spatch --sp-file ./kernelsu-coccinelle/scope-minimized-hooks/kernelsu-scope-minimized.cocci --in-place --linux-spacing "$p"; done
 
-          # Cleanup
-          rm -rf ./kernelsu-coccinelle/
-          rm -rf ./android/abi_gki_protected_exports*
-      # --- END OF PATCHING KERNELSU ---
+		# Cleanup temporary files and revert potentially conflicting Android files
+		rm -rf ./kernelsu-coccinelle/
+		rm -rf ./android/abi_gki_protected_exports*
 
-      - name: Cache proton-clang
-        uses: actions/cache@v3
-        id: cache-proton
-        with:
-          path: proton-clang
-          key: proton-clang-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
-          restore-keys: |
-            proton-clang-${{ runner.os }}-
+    - name: Cache proton-clang
+      uses: actions/cache@v3
+      id: cache-proton
+      with:
+        path: proton-clang
+        key: proton-clang-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
+        restore-keys: |
+          proton-clang-${{ runner.os }}-
 
-      - name: Cache APT packages
-        uses: actions/cache@v3
-        with:
-          path: /var/cache/apt/archives
-          key: apt-cache-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
-          restore-keys: |
-            apt-cache-${{ runner.os }}-
+    - name: Cache APT packages
+      uses: actions/cache@v3
+      with:
+        path: /var/cache/apt/archives
+        key: apt-cache-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
+        restore-keys: |
+          apt-cache-${{ runner.os }}-
 
-      - name: Set up ccache
-        uses: hendrikmuhs/ccache-action@v1.2
+    - name: Set up ccache
+      uses: hendrikmuhs/ccache-action@v1.2
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update -y
-          # Added coccinelle to dependencies
-          sudo apt install -y \
-            gcc-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabi \
-            binutils make python3 python2 libssl-dev build-essential \
-            bc bison flex unzip ca-certificates xz-utils \
-            mkbootimg cpio device-tree-compiler git git-lfs \
-            coccinelle
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt install -y \
+          gcc-aarch64-linux-gnu \
+          gcc-arm-linux-gnueabi \
+          binutils make python3 python2 libssl-dev build-essential \
+          bc bison flex unzip ca-certificates xz-utils \
+          mkbootimg cpio device-tree-compiler git git-lfs
+        
+        # Only download proton-clang if not cached
+        if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
+          rm -rf proton-clang
+          git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
+        fi
+        
+        make clean
+        make mrproper
+
+    - name: GetTime
+      id: get_time
+      run: |
+        echo "TIME=$(TZ=UTC+7 date +%m%d%H%M)" >> $GITHUB_OUTPUT
+
+    - name: Setup toolchain directory
+      run: |
+        # Create toolchain directory and link to proton-clang
+        mkdir -p toolchain
+        if [ -d "proton-clang" ]; then
+          ln -sf ../proton-clang/bin toolchain/bin
+          ln -sf ../proton-clang/lib toolchain/lib
+        fi
+        
+        # Verify toolchain setup
+        ls -la toolchain/
+        ls -la proton-clang/bin/ | head -10
+
+    - name: Run Eureka build script
+      run: |
+        chmod +x build.sh
+        
+        # Set comprehensive environment for CI build 
+        export BUILD_NO=""
+        export CORES=$(nproc --all)
+        export TERM=xterm-256color
+        export CI=true
+        export DEBIAN_FRONTEND=noninteractive
+        export SHELL=/bin/bash
+        export COLUMNS=80
+        export LINES=24
+        
+        echo "=== Starting Eureka build script ==="
+        echo "Available cores: $CORES"
+        echo "Current directory: $(pwd)"
+        echo "Environment variables set for CI"
+        echo "TERM=$TERM"
+        echo "CI=$CI"
+        
+        # Show build_output.log content from previous run if exists
+        if [ -f "build_output.log" ]; then
+          echo "=== Previous build log found ==="
+          tail -20 build_output.log
+        fi
+        
+        # Run the patched script and capture all output
+        echo "Running Eureka build script with patched values..."
+        
+        # Use script command to handle terminal emulation properly
+        script -q -c "timeout 7200 bash -x build.sh" build_output.log || {
+          exit_code=$?
+          echo "Script execution completed with exit code $exit_code"
           
-          # Only download proton-clang if not cached
-          if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
-            rm -rf proton-clang
-            git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
-          fi
+          # Show detailed error information
+          echo "=== Last 200 lines of build output ==="
+          tail -200 build_output.log 2>/dev/null || echo "No build output log found"
           
-          make clean
-          make mrproper
+          # Continue to check for partial build results
+        }
+        
+        echo "=== Build script execution completed ==="
+        
+        # Show the build output for debugging
+        echo "=== Build output (last 100 lines) ==="
+        tail -100 build_output.log 2>/dev/null || echo "No build output log found"
+        
+        # Check if build was successful by looking for output files
+        echo "=== Checking build results ==="
+        if [ -f "arch/arm64/boot/Image" ]; then
+          echo "✓ Kernel Image found in arch/arm64/boot/"
+          ls -la arch/arm64/boot/
+        else
+          echo "✗ No Kernel Image found in arch/arm64/boot/"
+          ls -la arch/arm64/boot/ || echo "boot directory not found"
+        fi
+        
+        if [ -f "kernel_zip/anykernel/Image" ]; then
+          echo "✓ Image file found in kernel_zip/anykernel/"
+        else
+          echo "✗ No Image file found in kernel_zip/anykernel/"
+          ls -la kernel_zip/anykernel/ || echo "anykernel directory not found"
+        fi
+        
+        # Check out directory
+        if [ -d "out" ]; then
+          echo "✓ out directory exists"
+          ls -la out/arch/arm64/boot/ 2>/dev/null || echo "No built files in out/"
+        else
+          echo "✗ out directory not found"
+        fi
+        
+        # Show disk usage and memory for debugging
+        echo "=== System resources after build ==="
+        df -h
+        free -h
 
-      - name: GetTime
-        id: get_time
-        run: |
-          echo "TIME=$(TZ=UTC+7 date +%m%d%H%M)" >> $GITHUB_OUTPUT
+    - name: Package kernel
+      run: |
+        echo "Packaging and preparing for upload..."
+        if [ -d "kernel_zip/anykernel" ]; then
+          echo "Kernel build completed successfully"
+          ls -la kernel_zip/anykernel/
+        else
+          echo "Warning: kernel_zip/anykernel directory not found"
+          find . -name "*.zip" -type f 2>/dev/null || echo "No zip files found"
+        fi
 
-      - name: Setup toolchain directory
-        run: |
-          # Create toolchain directory and link to proton-clang
-          mkdir -p toolchain
-          if [ -d "proton-clang" ]; then
-            ln -sf ../proton-clang/bin toolchain/bin
-            ln -sf ../proton-clang/lib toolchain/lib
-          fi
-          
-          # Verify toolchain setup
-          ls -la toolchain/
-          ls -la proton-clang/bin/ | head -10
-
-      - name: Run Eureka build script
-        run: |
-          chmod +x build.sh
-          
-          # Set comprehensive environment for CI build  
-          export BUILD_NO=""
-          export CORES=$(nproc --all)
-          export TERM=xterm-256color
-          export CI=true
-          export DEBIAN_FRONTEND=noninteractive
-          export SHELL=/bin/bash
-          export COLUMNS=80
-          export LINES=24
-          
-          echo "=== Starting Eureka build script ==="
-          echo "Available cores: $CORES"
-          echo "Current directory: $(pwd)"
-          echo "Environment variables set for CI"
-          echo "TERM=$TERM"
-          echo "CI=$CI"
-          
-          # Show build_output.log content from previous run if exists
-          if [ -f "build_output.log" ]; then
-            echo "=== Previous build log found ==="
-            tail -20 build_output.log
-          fi
-          
-          # Run the patched script and capture all output
-          echo "Running Eureka build script with patched values..."
-          
-          # Use script command to handle terminal emulation properly
-          script -q -c "timeout 7200 bash -x build.sh" build_output.log || {
-            exit_code=$?
-            echo "Script execution completed with exit code $exit_code"
-            
-            # Show detailed error information
-            echo "=== Last 200 lines of build output ==="
-            tail -200 build_output.log 2>/dev/null || echo "No build output log found"
-            
-            # Continue to check for partial build results
-          }
-          
-          echo "=== Build script execution completed ==="
-          
-          # Show the build output for debugging
-          echo "=== Build output (last 100 lines) ==="
-          tail -100 build_output.log 2>/dev/null || echo "No build output log found"
-          
-          # Check if build was successful by looking for output files
-          echo "=== Checking build results ==="
-          if [ -f "arch/arm64/boot/Image" ]; then
-            echo "✓ Kernel Image found in arch/arm64/boot/"
-            ls -la arch/arm64/boot/
-          else
-            echo "✗ No Kernel Image found in arch/arm64/boot/"
-            ls -la arch/arm64/boot/ || echo "boot directory not found"
-          fi
-          
-          if [ -f "kernel_zip/anykernel/Image" ]; then
-            echo "✓ Image file found in kernel_zip/anykernel/"
-          else
-            echo "✗ No Image file found in kernel_zip/anykernel/"
-            ls -la kernel_zip/anykernel/ || echo "anykernel directory not found"
-          fi
-          
-          # Check out directory
-          if [ -d "out" ]; then
-            echo "✓ out directory exists"
-            ls -la out/arch/arm64/boot/ 2>/dev/null || echo "No built files in out/"
-          else
-            echo "✗ out directory not found"
-          fi
-          
-          # Show disk usage and memory for debugging
-          echo "=== System resources after build ==="
-          df -h
-          free -h
-
-      - name: Package kernel
-        run: |
-          echo "Packaging and preparing for upload..."
-          if [ -d "kernel_zip/anykernel" ]; then
-            echo "Kernel build completed successfully"
-            ls -la kernel_zip/anykernel/
-          else
-            echo "Warning: kernel_zip/anykernel directory not found"
-            find . -name "*.zip" -type f 2>/dev/null || echo "No zip files found"
-          fi
-
-      - name: Upload kernel to artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Eureka_Kernel_A10_R15_${{ github.run_number }}
-          path: |
-            kernel_zip/anykernel/
-            kernel_zip/aroma/
-            *.zip
-          if-no-files-found: warn
+    - name: Upload kernel to artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Eureka_Kernel_A10_R15_${{ github.run_number }}
+        path: |
+          kernel_zip/anykernel/
+          kernel_zip/aroma/
+          *.zip
+        if-no-files-found: warn
