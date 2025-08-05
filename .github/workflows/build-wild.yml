@@ -126,72 +126,89 @@ jobs:
             echo "Storage spaces after debloat/clean-up:"
             df -h
 
-        - name: 'Setup dependencies and environment'
-          run: |
-            # Setup package sources and apt
-            sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources~
-            sudo sed -Ei 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
-            sudo apt-get update -y
+- name: 'Setup dependencies and environment'
+  run: |
+    # Setup package sources and apt
+    sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources~
+    sudo sed -Ei 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
+    sudo apt-get update -y
 
-            # Install kernel build dependencies
-            sudo apt build-dep -y linux
+    # Install kernel build dependencies
+    sudo apt build-dep -y linux
 
-            # Install clang and LLVM
-            LATEST_LLVM_TOOLCHAIN=$(curl -sSf https://api.github.com/repos/llvm/llvm-project/releases/latest | grep browser_download_url | cut -d '"' -f 4 | grep -wi "Linux-X64.tar.xz"$)
-            wget $LATEST_LLVM_TOOLCHAIN -O ./LLVM-latest-Linux-X64.tar.xz
-            tar --wildcards -xvpf ./LLVM-latest-Linux-X64.tar.xz --warning=no-file-changed --ignore-failed-read || true
-            rm -rf *.tar.xz
+    # Install clang and LLVM
+    LATEST_LLVM_TOOLCHAIN=$(curl -sSf https://api.github.com/repos/llvm/llvm-project/releases/latest | grep browser_download_url | cut -d '"' -f 4 | grep -wi "Linux-X64.tar.xz"$)
+    wget $LATEST_LLVM_TOOLCHAIN -O ./LLVM-latest-Linux-X64.tar.xz
+    tar --wildcards -xvpf ./LLVM-latest-Linux-X64.tar.xz --warning=no-file-changed --ignore-failed-read || true
+    rm -rf *.tar.xz
 
-            # Install GCC for aarch64 and arm(32)
-            wget https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz
-            for file in *.tar.xz; do tar --wildcards -xvpf $file --warning=no-file-changed --ignore-failed-read || true; done
-            rm -rf *.tar.xz
+    # --- ADDED CODE START ---
+    # Set the path to the LLVM bin directory
+    LLVM_BIN_DIR=$(find . -type d -name "LLVM-*-Linux-X64")/bin
+    # Add the LLVM bin directory to the GITHUB_PATH for subsequent steps
+    echo "$LLVM_BIN_DIR" >> $GITHUB_PATH
+    # --- ADDED CODE END ---
 
-            # Install some general dependencies
-            sudo apt-get install -y p7zip-full tar bzip2 unrar gzip zip unzip python3-dev repo
+    # Install GCC for aarch64 and arm(32)
+    wget https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz
+    for file in *.tar.xz; do tar --wildcards -xvpf $file --warning=no-file-changed --ignore-failed-read || true; done
+    rm -rf *.tar.xz
 
-            # Download and extract compiler toolchain
-            extract ()
-            {
-            if [ -f $1 ] ; then
-                case $1 in
-                *.tar.bz2)   tar xjf $1   ;;
-                *.tar.gz)    tar xzf $1   ;;
-                *.bz2)       bunzip2 $1   ;;
-                *.rar)       unrar x $1   ;;
-                *.gz)        gunzip $1    ;;
-                *.tar)       tar xf $1    ;;
-                *.tbz2)      tar xjf $1   ;;
-                *.tgz)       tar xzf $1   ;;
-                *.zip)       unzip $1     ;;
-                *.Z)         uncompress $1;;
-                *.7z)        7z x $1      ;;
-                *.deb)       ar x $1      ;;
-                *.tar.xz)    tar xf $1    ;;
-                *)           echo "'$1' cannot be extracted via extract()" ;;
-                esac
-            else
-                echo "'$1' is not a valid file"
-            fi
-            }
+    # --- ADDED CODE START ---
+    # Set the path to the aarch64 GCC bin directory
+    GCC_AARCH64_BIN_DIR=$(find . -type d -name "arm-gnu-toolchain-*-aarch64-none-linux-gnu")/bin
+    # Set the path to the arm GCC bin directory
+    GCC_ARM_BIN_DIR=$(find . -type d -name "arm-gnu-toolchain-*-arm-none-linux-gnueabihf")/bin
+    # Add the GCC bin directories to the GITHUB_PATH
+    echo "$GCC_AARCH64_BIN_DIR" >> $GITHUB_PATH
+    echo "$GCC_ARM_BIN_DIR" >> $GITHUB_PATH
+    # --- ADDED CODE END ---
 
-            if [ ! -z ${{ github.event.inputs.KERNEL_COMPILER_TOOLCHAIN }} ]; then
-                mkdir ./compiler-toolchain/
-                wget ${{ github.event.inputs.KERNEL_COMPILER_TOOLCHAIN }} -P ./compiler-toolchain/
+    # Install some general dependencies
+    sudo apt-get install -y p7zip-full tar bzip2 unrar gzip zip unzip python3-dev repo
 
-                cd ./compiler-toolchain/
-                extract ./*
-                cd ../
-            fi
+    # Download and extract custom compiler toolchain (if provided)
+    extract ()
+    {
+    if [ -f $1 ] ; then
+        case $1 in
+        *.tar.bz2)    tar xjf $1    ;;
+        *.tar.gz)     tar xzf $1    ;;
+        *.bz2)        bunzip2 $1    ;;
+        *.rar)        unrar x $1    ;;
+        *.gz)         gunzip $1     ;;
+        *.tar)        tar xf $1     ;;
+        *.tbz2)       tar xjf $1    ;;
+        *.tgz)        tar xzf $1    ;;
+        *.zip)        unzip $1      ;;
+        *.Z)          uncompress $1;;
+        *.7z)         7z x $1      ;;
+        *.deb)        ar x $1      ;;
+        *.tar.xz)     tar xf $1     ;;
+        *)            echo "'$1' cannot be extracted via extract()" ;;
+        esac
+    else
+        echo "'$1' is not a valid file"
+    fi
+    }
 
-            # Compile and install coccinelle
-            sudo apt-get build-dep -y coccinelle
-            git clone --depth=1 https://github.com/coccinelle/coccinelle.git
-            cd ./coccinelle/
-            ./autogen
-            ./configure
-            make -j$(nproc --all)
-            sudo make -j$(nproc --all) install
+    if [ ! -z ${{ github.event.inputs.KERNEL_COMPILER_TOOLCHAIN }} ]; then
+        mkdir ./compiler-toolchain/
+        wget ${{ github.event.inputs.KERNEL_COMPILER_TOOLCHAIN }} -P ./compiler-toolchain/
+
+        cd ./compiler-toolchain/
+        extract ./*
+        cd ../
+    fi
+
+    # Compile and install coccinelle
+    sudo apt-get build-dep -y coccinelle
+    git clone --depth=1 https://github.com/coccinelle/coccinelle.git
+    cd ./coccinelle/
+    ./autogen
+    ./configure
+    make -j$(nproc --all)
+    sudo make -j$(nproc --all) install
 
         - name: 'Clone kernel source'
           run: |
