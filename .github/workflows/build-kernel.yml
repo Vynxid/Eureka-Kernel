@@ -71,10 +71,12 @@ jobs:
               bc bison flex unzip ca-certificates xz-utils \
               mkbootimg cpio device-tree-compiler git git-lfs
             
-              # Only download proton-clang if not cached
               if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
+                echo "Cache for proton-clang missed. Cloning..."
                 rm -rf proton-clang
                 git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
+              else
+                echo "Cache for proton-clang hit. Skipping clone."
               fi
               
     - name: 'Patch KernelSU manual scope-minimized hooks into the kernel source'
@@ -141,27 +143,38 @@ jobs:
         
         make O=out olddefconfig
         make O=out -j$(nproc --all)
+        
     - name: Package kernel
       run: |
-        git clone --depth=1 https://github.com/osm0sis/AnyKernel3 -b master AnyKernel3
-        rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
+        cd kernel_zip/anykernel/
+        echo "Packaging and preparing for upload..."
+        # Copy built kernel artifacts into the anykernel folder
+        if [[ -f ../../out/arch/arm64/boot/Image.gz-dtb ]]; then
+          cp ../../out/arch/arm64/boot/Image.gz-dtb .
+        elif [[ -f ../../out/arch/arm64/boot/Image-dtb ]]; then
+          cp ../../out/arch/arm64/boot/Image-dtb .
+        elif [[ -f ../../out/arch/arm64/boot/Image.gz ]]; then
+          cp ../../out/arch/arm64/boot/Image.gz .
+        elif [[ -f ../../out/arch/arm64/boot/Image ]]; then
+          cp ../../out/arch/arm64/boot/Image .
+        fi
+
+        if [[ -f ../../out/arch/arm64/boot/dtbo.img ]]; then
+          cp ../../out/arch/arm64/boot/dtbo.img .
+        fi
+        # Determine the zip file name
+        ZIPNAME="Eureka_Kernel_${{ github.run_number }}.zip"
+
+        # Create the flashable zip
+        zip -r9 $ZIPNAME ./* > /dev/null
         
-        # Use custom anykernel.sh
-        cp anykernel.sh AnyKernel3/anykernel.sh
-        if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
-          cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-        elif [[ -f out/arch/arm64/boot/Image-dtb ]]; then
-          cp out/arch/arm64/boot/Image-dtb AnyKernel3/Image-dtb
-        elif [[ -f out/arch/arm64/boot/Image.gz ]]; then
-          cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
-        elif [[ -f out/arch/arm64/boot/Image ]]; then
-          cp out/arch/arm64/boot/Image AnyKernel3/Image
-        fi
-        if [[ -f out/arch/arm64/boot/dtbo.img ]]; then
-          cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
-        fi
+        # Go back to the root directory
+        cd ../../
+        
     - name: Upload kernel to artifact
       uses: actions/upload-artifact@v4
       with:
-        name: R15-OneUI-KSUN-${{ github.run_number }}
-        path: AnyKernel3/
+        name: R15-AOSP-KSUN${{ github.run_number }}
+        # The path now points to the created zip file
+        path: kernel_zip/anykernel/*.zip
+        if-no-files-found: warn
