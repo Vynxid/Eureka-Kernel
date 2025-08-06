@@ -24,7 +24,6 @@ jobs:
     - name: Initialize submodules
       run: |
         git submodule update --init --recursive
-
     - name: Setup KernelSU-Next
       run: |
         # Remove existing KernelSU setup
@@ -36,7 +35,6 @@ jobs:
         # Verify installation
         ls -la drivers/kernelsu/
         ls -la drivers/kernelsu/Kconfig || echo "Kconfig not found"
-
     - name: Cache proton-clang
       uses: actions/cache@v3
       id: cache-proton
@@ -45,7 +43,6 @@ jobs:
         key: proton-clang-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
         restore-keys: |
           proton-clang-${{ runner.os }}-
-
     - name: Cache APT packages
       uses: actions/cache@v3
       with:
@@ -53,32 +50,62 @@ jobs:
         key: apt-cache-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
         restore-keys: |
           apt-cache-${{ runner.os }}-
-
     - name: Set up ccache
       uses: hendrikmuhs/ccache-action@v1.2
 
     - name: Install dependencies
       run: |
-        sudo apt-get update -y 
-        sudo apt install -y \
-          gcc-aarch64-linux-gnu \
-          gcc-arm-linux-gnueabi \
-          binutils make python3 python2 libssl-dev build-essential \
-          bc bison flex unzip ca-certificates xz-utils \
-          mkbootimg cpio device-tree-compiler git git-lfs
-        # Only download proton-clang if not cached
-        if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
-          rm -rf proton-clang
-          git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
-        fi
+              # Check if ubuntu.sources file exists, otherwise use sources.list
+                if [ -f "/etc/apt/sources.list.d/ubuntu.sources" ]; then
+                  sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources~
+                  sudo sed -Ei 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
+                else
+                  sudo cp /etc/apt/sources.list /etc/apt/sources.list~
+                  sudo sed -Ei 's/^# deb-src /deb-src /' /etc/apt/sources.list
+                fi
+              sudo apt-get update -y
+              sudo apt install -y \
+              gcc-aarch64-linux-gnu \
+              gcc-arm-linux-gnueabi \
+              binutils make python3 python2 libssl-dev build-essential \
+              bc bison flex unzip ca-certificates xz-utils \
+              mkbootimg cpio device-tree-compiler git git-lfs
+            
+              if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
+                echo "Cache for proton-clang missed. Cloning..."
+                rm -rf proton-clang
+                git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
+              else
+                echo "Cache for proton-clang hit. Skipping clone."
+              fi
+              
+    - name: 'Patch KernelSU manual scope-minimized hooks into the kernel source'
+      working-directory: '/home/runner/work/Eureka-Kernel/Eureka-Kernel/'
+      run: |
+        # Install coccinelle dependencies
+        sudo apt-get build-dep -y coccinelle
+        
+        # Clone and install coccinelle from source
+        git clone --depth=1 https://github.com/coccinelle/coccinelle.git
+        cd ./coccinelle/
+        ./autogen
+        ./configure
+        make -j$(nproc --all)
+        sudo make -j$(nproc --all) install
+        cd .. # Return to root directory
+        # Clone the repository which contains the patch
+        git clone --depth=1 https://github.com/devnoname120/kernelsu-coccinelle.git
+        # Patch the kernel source with scope-minimized hooks
+        for p in fs drivers/input drivers/tty arch/arm/kernel; do spatch --sp-file ./kernelsu-coccinelle/scope-minimized-hooks/kernelsu-scope-minimized.cocci --in-place --linux-spacing "$p"; done
+        # Cleanup
+        rm -rf ./kernelsu-coccinelle/
+        # Delete files that may conflict with kernel functionality
+        rm -rf ./android/abi_gki_protected_exports*
+        
+        # Run make clean/mrproper here, AFTER all patches have been applied
         make clean
         make mrproper
-
-    - name: GetTime
-      id: get_time
-      run: |
-        echo "TIME=$(TZ=UTC+7 date +%m%d%H%M)" >> $GITHUB_OUTPUT
-
+    
     - name: Build Kernel
       run: |
         export PROTON_PATH=$(pwd)/proton-clang/bin
@@ -100,39 +127,54 @@ jobs:
         export ANDROID_MAJOR_VERSION=r
         # Disable LTO flags to prevent linker errors
         export KBUILD_LDFLAGS=""
-
         make O=out $KERNEL_DEFCONFIG
-        # Disable LTO and related options that cause linker issues
+
+        # Generate and modify .config file
+        echo "DEBUG: Generating defconfig"
+        make O=out $KERNEL_DEFCONFIG
+
+        echo "DEBUG: Applying kernel configuration changes"
         scripts/config --file out/.config -d LTO -d LTO_CLANG -d CFI_CLANG
-        # Enable A10 specific configs
-        scripts/config --file out/.config -e ARCH_SUNXI -e MACH_SUN4I
+        scripts/config --file out/.config -e KSU -e KSU_DEBUG -e KSU_SU_DEBUG -e KSU_MANUAL_HOOK -e KSU_64BIT
+        scripts/config --file out/.config -e KSU -e KSU_DEBUG -e KSU_SU_DEBUG -e KSU_MANUAL_HOOK -e KSU_64BIT
+        scripts/config --file out/.config -e CONFIG_KSU_LSM_SECURITY_HOOKS -e CONFIG_KALLSYMS -e CONFIG_KALLSYMS_ALL
+        scripts/config --file out/.config -d KPROBES -d KPROBE_EVENTS -d KSU_KPROBES_HOOK
+        scripts/config --file out/.config -e MODULE_FORCE_UNLOAD -e MODULE_FORCE_LOAD
+        
         make O=out olddefconfig
         make O=out -j$(nproc --all)
-
+        
     - name: Package kernel
       run: |
-        git clone --depth=1 https://github.com/osm0sis/AnyKernel3 -b master AnyKernel3
-        rm -rf AnyKernel3/.git AnyKernel3/.github AnyKernel3/LICENSE AnyKernel3/README.md
+        cd kernel_zip/anykernel/
+        echo "Packaging and preparing for upload..."
+        # Copy built kernel artifacts into the anykernel folder
+        if [[ -f ../../out/arch/arm64/boot/Image.gz-dtb ]]; then
+          cp ../../out/arch/arm64/boot/Image.gz-dtb .
+        elif [[ -f ../../out/arch/arm64/boot/Image-dtb ]]; then
+          cp ../../out/arch/arm64/boot/Image-dtb .
+        elif [[ -f ../../out/arch/arm64/boot/Image.gz ]]; then
+          cp ../../out/arch/arm64/boot/Image.gz .
+        elif [[ -f ../../out/arch/arm64/boot/Image ]]; then
+          cp ../../out/arch/arm64/boot/Image .
+        fi
+
+        if [[ -f ../../out/arch/arm64/boot/dtbo.img ]]; then
+          cp ../../out/arch/arm64/boot/dtbo.img .
+        fi
+        # Determine the zip file name
+        ZIPNAME="Eureka_Kernel_${{ github.run_number }}.zip"
+
+        # Create the flashable zip
+        zip -r9 $ZIPNAME ./* > /dev/null
         
-        # Use custom anykernel.sh for Samsung Galaxy A10
-        cp anykernel.sh AnyKernel3/anykernel.sh
-
-        if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
-          cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-        elif [[ -f out/arch/arm64/boot/Image-dtb ]]; then
-          cp out/arch/arm64/boot/Image-dtb AnyKernel3/Image-dtb
-        elif [[ -f out/arch/arm64/boot/Image.gz ]]; then
-          cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
-        elif [[ -f out/arch/arm64/boot/Image ]]; then
-          cp out/arch/arm64/boot/Image AnyKernel3/Image
-        fi
-
-        if [[ -f out/arch/arm64/boot/dtbo.img ]]; then
-          cp out/arch/arm64/boot/dtbo.img AnyKernel3/dtbo.img
-        fi
-
+        # Go back to the root directory
+        cd ../../
+        
     - name: Upload kernel to artifact
       uses: actions/upload-artifact@v4
       with:
-        name: R15-OneUI-KSUN-${{ github.run_number }}
-        path: AnyKernel3/
+        name: R15-AOSP-KSUN${{ github.run_number }}
+        # The path now points to the created zip file
+        path: kernel_zip/anykernel/*.zip
+        if-no-files-found: warn
