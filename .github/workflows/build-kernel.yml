@@ -215,14 +215,14 @@ jobs:
         # Disable LTO flags to prevent linker errors
         export KBUILD_LDFLAGS=""
         
-        # Create localversion for proper naming
+        # Create localversion for proper naming (max 64 chars total)
         REV=${{ github.run_number }}
         CODENAME=${{ github.event.inputs.device_model }}
         
         if [ "${{ env.ONEUI3 }}" == "1" ]; then
-          export LOCALVERSION=-Eureka_R${REV}_${CODENAME}_${{ env.SELINUX_STATUS }}S
+          export LOCALVERSION=-EurekaR${REV}_${CODENAME}_${{ github.event.inputs.selinux_mode == 'enforcing' && 'enf' || 'perm' }}_S
         else
-          export LOCALVERSION=-Eureka_R${REV}_${CODENAME}_${{ env.SELINUX_STATUS }}Legacy_Q_R_S  
+          export LOCALVERSION=-EurekaR${REV}_${CODENAME}_${{ github.event.inputs.selinux_mode == 'enforcing' && 'enf' || 'perm' }}_QRS  
         fi
         
         echo "Building with defconfig: $KERNEL_DEFCONFIG"
@@ -248,9 +248,9 @@ jobs:
         CODENAME=${{ github.event.inputs.device_model }}
         
         if [ "${{ env.ONEUI3 }}" == "1" ]; then
-          ZIPNAME="Eureka_R${REV}_${CODENAME}_${{ env.SELINUX_STATUS }}S_KSUN.zip"
+          ZIPNAME="EurekaR${REV}_${CODENAME}_${{ github.event.inputs.selinux_mode == 'enforcing' && 'enf' || 'perm' }}_S_KSUN.zip"
         else
-          ZIPNAME="Eureka_R${REV}_${CODENAME}_${{ env.SELINUX_STATUS }}Legacy_Q_R_S_KSUN.zip"
+          ZIPNAME="EurekaR${REV}_${CODENAME}_${{ github.event.inputs.selinux_mode == 'enforcing' && 'enf' || 'perm' }}_QRS_KSUN.zip"
         fi
         
         # Copy built kernel artifacts into the anykernel folder
