@@ -2,6 +2,37 @@ name: Build Kernel
 
 on:
   workflow_dispatch:
+    inputs:
+      android_variant:
+        description: 'Android Variant'
+        required: true
+        default: 'aosp_legacy'
+        type: choice
+        options:
+        - aosp_legacy
+        - oneui3
+      selinux_mode:
+        description: 'SELinux Mode'
+        required: true
+        default: 'enforcing'
+        type: choice
+        options:
+        - enforcing
+        - permissive
+      device_model:
+        description: 'Device Model'
+        required: true
+        default: 'A105'
+        type: choice
+        options:
+        - A105
+        - A205
+        - A202
+        - A305
+        - A307
+        - A405
+        - A3050
+        - M205
 
 jobs:
   build:
@@ -12,7 +43,8 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_MAXSIZE: "2G"
       CCACHE_HARDLINK: "true"
-      KERNEL_DEFCONFIG: "exynos7885-a10_defconfig"
+      # Dynamic defconfig based on device
+      KERNEL_DEFCONFIG: exynos7885-${{ github.event.inputs.device_model == 'A105' && 'a10' || github.event.inputs.device_model == 'A205' && 'a20' || github.event.inputs.device_model == 'A202' && 'a20e' || github.event.inputs.device_model == 'A305' && 'a30' || github.event.inputs.device_model == 'A307' && 'a30s' || github.event.inputs.device_model == 'A405' && 'a40' || github.event.inputs.device_model == 'A3050' && 'a40s' || 'm20' }}_defconfig
 
     steps:
     - name: Checkout
@@ -24,6 +56,7 @@ jobs:
     - name: Initialize submodules
       run: |
         git submodule update --init --recursive
+        
     - name: Setup KernelSU-Next
       run: |
         # Remove existing KernelSU setup
@@ -35,6 +68,7 @@ jobs:
         # Verify installation
         ls -la drivers/kernelsu/
         ls -la drivers/kernelsu/Kconfig || echo "Kconfig not found"
+
     - name: Cache proton-clang
       uses: actions/cache@v3
       id: cache-proton
@@ -43,6 +77,7 @@ jobs:
         key: proton-clang-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
         restore-keys: |
           proton-clang-${{ runner.os }}-
+
     - name: Cache APT packages
       uses: actions/cache@v3
       with:
@@ -50,35 +85,36 @@ jobs:
         key: apt-cache-${{ runner.os }}-${{ hashFiles('**/build-kernel.yml') }}
         restore-keys: |
           apt-cache-${{ runner.os }}-
+
     - name: Set up ccache
       uses: hendrikmuhs/ccache-action@v1.2
 
     - name: Install dependencies
       run: |
-              # Check if ubuntu.sources file exists, otherwise use sources.list
-                if [ -f "/etc/apt/sources.list.d/ubuntu.sources" ]; then
-                  sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources~
-                  sudo sed -Ei 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
-                else
-                  sudo cp /etc/apt/sources.list /etc/apt/sources.list~
-                  sudo sed -Ei 's/^# deb-src /deb-src /' /etc/apt/sources.list
-                fi
-              sudo apt-get update -y
-              sudo apt install -y \
-              gcc-aarch64-linux-gnu \
-              gcc-arm-linux-gnueabi \
-              binutils make python3 python2 libssl-dev build-essential \
-              bc bison flex unzip ca-certificates xz-utils \
-              mkbootimg cpio device-tree-compiler git git-lfs
-            
-              if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
-                echo "Cache for proton-clang missed. Cloning..."
-                rm -rf proton-clang
-                git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
-              else
-                echo "Cache for proton-clang hit. Skipping clone."
-              fi
-              
+        # Check if ubuntu.sources file exists, otherwise use sources.list
+        if [ -f "/etc/apt/sources.list.d/ubuntu.sources" ]; then
+          sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources~
+          sudo sed -Ei 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
+        else
+          sudo cp /etc/apt/sources.list /etc/apt/sources.list~
+          sudo sed -Ei 's/^# deb-src /deb-src /' /etc/apt/sources.list
+        fi
+        sudo apt-get update -y
+        sudo apt install -y \
+        gcc-aarch64-linux-gnu \
+        gcc-arm-linux-gnueabi \
+        binutils make python3 python2 libssl-dev build-essential \
+        bc bison flex unzip ca-certificates xz-utils \
+        mkbootimg cpio device-tree-compiler git git-lfs
+        
+        if [ "${{ steps.cache-proton.outputs.cache-hit }}" != 'true' ]; then
+          echo "Cache for proton-clang missed. Cloning..."
+          rm -rf proton-clang
+          git clone https://github.com/kdrag0n/proton-clang --depth=1 -b master
+        else
+          echo "Cache for proton-clang hit. Skipping clone."
+        fi
+
     - name: 'Patch KernelSU manual scope-minimized hooks into the kernel source'
       working-directory: '/home/runner/work/Eureka-Kernel/Eureka-Kernel/'
       run: |
@@ -93,10 +129,15 @@ jobs:
         make -j$(nproc --all)
         sudo make -j$(nproc --all) install
         cd .. # Return to root directory
+        
         # Clone the repository which contains the patch
         git clone --depth=1 https://github.com/devnoname120/kernelsu-coccinelle.git
+        
         # Patch the kernel source with scope-minimized hooks
-        for p in fs drivers/input drivers/tty arch/arm/kernel; do spatch --sp-file ./kernelsu-coccinelle/scope-minimized-hooks/kernelsu-scope-minimized.cocci --in-place --linux-spacing "$p"; done
+        for p in fs drivers/input drivers/tty arch/arm/kernel; do 
+          spatch --sp-file ./kernelsu-coccinelle/scope-minimized-hooks/kernelsu-scope-minimized.cocci --in-place --linux-spacing "$p"
+        done
+        
         # Cleanup
         rm -rf ./kernelsu-coccinelle/
         # Delete files that may conflict with kernel functionality
@@ -105,7 +146,52 @@ jobs:
         # Run make clean/mrproper here, AFTER all patches have been applied
         make clean
         make mrproper
-    
+
+    - name: Configure Android Variant and SELinux
+      run: |
+        echo "Configuring for Android variant: ${{ github.event.inputs.android_variant }}"
+        echo "SELinux mode: ${{ github.event.inputs.selinux_mode }}"
+        echo "Device: ${{ github.event.inputs.device_model }}"
+        
+        # Backup DTS files if they don't exist
+        if [ ! -e "arch/arm64/boot/dts/exynos/dtb/exynos7885.dts.bak" ]; then
+          cp arch/arm64/boot/dts/exynos/dtb/exynos7885.dts arch/arm64/boot/dts/exynos/dtb/exynos7885.dts.bak
+        fi
+        
+        if [ ! -e "drivers/media/platform/exynos/Kconfig.bak" ]; then
+          cp drivers/media/platform/exynos/Kconfig drivers/media/platform/exynos/Kconfig.bak
+        fi
+        
+        # Configure SELinux
+        LINE=$(grep -n 'sel_boot_state' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts | gawk '{print $1}' FS=":")
+        if [ "${{ github.event.inputs.selinux_mode }}" == "enforcing" ]; then
+          sed -i ${LINE}'s/.*/		sel_boot_state = <0>;/' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts
+          export SELINUX_STATUS="enforcing_"
+        else
+          sed -i ${LINE}'s/.*/		sel_boot_state = <1>;/' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts
+          export SELINUX_STATUS="permissive_"
+        fi
+        
+        # Configure Android variant
+        LINE_VARIANT=$(grep -n 'eureka_kernel_variant' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts | gawk '{print $1}' FS=":")
+        if [ "${{ github.event.inputs.android_variant }}" == "oneui3" ]; then
+          # OneUI 3 configuration
+          sed -i ${LINE_VARIANT}'s/.*/			eureka_kernel_variant = <3>;/' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts
+          sed -i '55s/.*/        default y/' drivers/media/platform/exynos/Kconfig
+          export ONEUI3=1
+          export ANDROID_VAR="OneUI3"
+        else
+          # AOSP Legacy configuration  
+          sed -i ${LINE_VARIANT}'s/.*/			eureka_kernel_variant = <2>;/' arch/arm64/boot/dts/exynos/dtb/exynos7885.dts
+          export ONEUI3=0
+          export ANDROID_VAR="AOSP-Legacy"
+        fi
+        
+        # Export variables to GITHUB_ENV for next steps
+        echo "SELINUX_STATUS=${SELINUX_STATUS}" >> $GITHUB_ENV
+        echo "ONEUI3=${ONEUI3}" >> $GITHUB_ENV  
+        echo "ANDROID_VAR=${ANDROID_VAR}" >> $GITHUB_ENV
+
     - name: Build Kernel
       run: |
         export PROTON_PATH=$(pwd)/proton-clang/bin
@@ -125,17 +211,25 @@ jobs:
         export STRIP=llvm-strip
         export KCFLAGS=-w
         export ANDROID_MAJOR_VERSION=r
+        export PLATFORM_VERSION=11
         # Disable LTO flags to prevent linker errors
         export KBUILD_LDFLAGS=""
-        make O=out $KERNEL_DEFCONFIG
-
-        # Generate and modify .config file
-        echo "DEBUG: Generating defconfig"
+        
+        # Create localversion for proper naming
+        REV=${{ github.run_number }}
+        CODENAME=${{ github.event.inputs.device_model }}
+        
+        if [ "${{ env.ONEUI3 }}" == "1" ]; then
+          export LOCALVERSION=-Eureka_R${REV}_${CODENAME}_${{ env.SELINUX_STATUS }}S
+        else
+          export LOCALVERSION=-Eureka_R${REV}_${CODENAME}_${{ env.SELINUX_STATUS }}Legacy_Q_R_S  
+        fi
+        
+        echo "Building with defconfig: $KERNEL_DEFCONFIG"
         make O=out $KERNEL_DEFCONFIG
 
         echo "DEBUG: Applying kernel configuration changes"
         scripts/config --file out/.config -d LTO -d LTO_CLANG -d CFI_CLANG
-        scripts/config --file out/.config -e KSU -e KSU_DEBUG -e KSU_SU_DEBUG -e KSU_MANUAL_HOOK -e KSU_64BIT -e CONFIG_KSU_SUSFS
         scripts/config --file out/.config -e KSU -e KSU_DEBUG -e KSU_SU_DEBUG -e KSU_MANUAL_HOOK -e KSU_64BIT
         scripts/config --file out/.config -e CONFIG_KSU_LSM_SECURITY_HOOKS -e CONFIG_KALLSYMS -e CONFIG_KALLSYMS_ALL
         scripts/config --file out/.config -d KPROBES -d KPROBE_EVENTS -d KSU_KPROBES_HOOK
@@ -143,38 +237,86 @@ jobs:
         
         make O=out olddefconfig
         make O=out -j$(nproc --all)
-        
+
     - name: Package kernel
       run: |
         cd kernel_zip/anykernel/
         echo "Packaging and preparing for upload..."
+        
+        # Generate proper zip name based on variant
+        REV=${{ github.run_number }}
+        CODENAME=${{ github.event.inputs.device_model }}
+        
+        if [ "${{ env.ONEUI3 }}" == "1" ]; then
+          ZIPNAME="Eureka_R${REV}_${CODENAME}_${{ env.SELINUX_STATUS }}S_KSUN.zip"
+        else
+          ZIPNAME="Eureka_R${REV}_${CODENAME}_${{ env.SELINUX_STATUS }}Legacy_Q_R_S_KSUN.zip"
+        fi
+        
         # Copy built kernel artifacts into the anykernel folder
         if [[ -f ../../out/arch/arm64/boot/Image.gz-dtb ]]; then
-          cp ../../out/arch/arm64/boot/Image.gz-dtb .
+          cp ../../out/arch/arm64/boot/Image.gz-dtb Image
         elif [[ -f ../../out/arch/arm64/boot/Image-dtb ]]; then
-          cp ../../out/arch/arm64/boot/Image-dtb .
+          cp ../../out/arch/arm64/boot/Image-dtb Image
         elif [[ -f ../../out/arch/arm64/boot/Image.gz ]]; then
-          cp ../../out/arch/arm64/boot/Image.gz .
+          cp ../../out/arch/arm64/boot/Image.gz Image
         elif [[ -f ../../out/arch/arm64/boot/Image ]]; then
-          cp ../../out/arch/arm64/boot/Image .
+          cp ../../out/arch/arm64/boot/Image Image
         fi
 
-        if [[ -f ../../out/arch/arm64/boot/dtbo.img ]]; then
-          cp ../../out/arch/arm64/boot/dtbo.img .
+        # Copy DTB if it exists
+        if [[ -f ../../out/arch/arm64/boot/dtb.img ]]; then
+          cp ../../out/arch/arm64/boot/dtb.img dtb.img
         fi
-        # Determine the zip file name
-        ZIPNAME="Eureka_Kernel_${{ github.run_number }}.zip"
+        
+        # Copy DTBO if it exists
+        if [[ -f ../../out/arch/arm64/boot/dtbo.img ]]; then
+          cp ../../out/arch/arm64/boot/dtbo.img dtbo.img
+        else
+          # Use prebuilt DTBO based on device
+          case "${{ github.event.inputs.device_model }}" in
+            "A105") cp ../dtbo/a10/dtbo.img dtbo.img 2>/dev/null || true ;;
+            "A205") cp ../dtbo/a20/dtbo.img dtbo.img 2>/dev/null || true ;;
+            "A202") cp ../dtbo/a20e/dtbo.img dtbo.img 2>/dev/null || true ;;
+            "A305") cp ../dtbo/a30/dtbo.img dtbo.img 2>/dev/null || true ;;
+            "A307") cp ../dtbo/a30s/dtbo.img dtbo.img 2>/dev/null || true ;;
+            "A405") cp ../dtbo/a40/dtbo.img dtbo.img 2>/dev/null || true ;;
+            "A3050") cp ../dtbo/a3050/dtbo.img dtbo.img 2>/dev/null || true ;;
+            "M205") cp ../dtbo/m20/dtbo.img dtbo.img 2>/dev/null || true ;;
+          esac
+        fi
 
         # Create the flashable zip
         zip -r9 $ZIPNAME ./* > /dev/null
         
+        # Store zipname for artifact upload
+        echo "ZIPNAME=${ZIPNAME}" >> $GITHUB_ENV
+        
         # Go back to the root directory
         cd ../../
-        
+
     - name: Upload kernel to artifact
       uses: actions/upload-artifact@v4
       with:
-        name: R15-AOSP-KSUN${{ github.run_number }}
-        # The path now points to the created zip file
+        name: ${{ env.ANDROID_VAR }}-${{ github.event.inputs.device_model }}-${{ github.event.inputs.selinux_mode }}-R${{ github.run_number }}
         path: kernel_zip/anykernel/*.zip
         if-no-files-found: warn
+
+    - name: Generate Build Summary
+      run: |
+        echo "## 🚀 Kernel Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Device Model:** ${{ github.event.inputs.device_model }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Android Variant:** ${{ env.ANDROID_VAR }}" >> $GITHUB_STEP_SUMMARY  
+        echo "**SELinux Mode:** ${{ github.event.inputs.selinux_mode }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Kernel Version:** Eureka R${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Build Status:** ✅ Success" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Features:**" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ KernelSU-Next v1.0.9" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Scope-minimized hooks" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ env.ONEUI3 }}" == "1" ]; then
+          echo "- ✅ OneUI 3 optimizations" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- ✅ AOSP Legacy support (Q/R/S)" >> $GITHUB_STEP_SUMMARY
+        fi
