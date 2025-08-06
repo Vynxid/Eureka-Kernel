@@ -135,7 +135,7 @@ jobs:
 
         echo "DEBUG: Applying kernel configuration changes"
         scripts/config --file out/.config -d LTO -d LTO_CLANG -d CFI_CLANG
-        scripts/config --file out/.config -e KSU -e KSU_DEBUG -e KSU_SU_DEBUG -e KSU_MANUAL_HOOK -e KSU_64BIT
+        scripts/config --file out/.config -e KSU -e KSU_DEBUG -e KSU_SU_DEBUG -e KSU_MANUAL_HOOK -e KSU_64BIT -e CONFIG_KSU_SUSFS
         scripts/config --file out/.config -e KSU -e KSU_DEBUG -e KSU_SU_DEBUG -e KSU_MANUAL_HOOK -e KSU_64BIT
         scripts/config --file out/.config -e CONFIG_KSU_LSM_SECURITY_HOOKS -e CONFIG_KALLSYMS -e CONFIG_KALLSYMS_ALL
         scripts/config --file out/.config -d KPROBES -d KPROBE_EVENTS -d KSU_KPROBES_HOOK
