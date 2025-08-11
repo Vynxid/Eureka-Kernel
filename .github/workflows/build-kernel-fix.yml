@@ -2,6 +2,11 @@ name: Build Kernel with Eureka Script
 
 on:
   workflow_dispatch:
+    inputs:
+      kernelsu_next_version:
+        description: 'KernelSU-Next Version'
+        required: false
+        default: 'v1.0.9'
 
 jobs:
   build:
@@ -29,8 +34,8 @@ jobs:
       run: |
         # Remove existing KernelSU setup
         rm -rf KernelSU-Next KernelSU drivers/kernelsu
-        # Install latest KernelSU-Next 1.0.9
-        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v1.0.9
+        # Install KernelSU-Next with user-specified version
+        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s ${{ github.event.inputs.kernelsu_next_version }}
         # Verify installation
         ls -la drivers/kernelsu/
         ls -la drivers/kernelsu/Kconfig || echo "Kconfig not found"
