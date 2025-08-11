@@ -3,10 +3,18 @@ name: Build Kernel with Eureka Script
 on:
   workflow_dispatch:
     inputs:
+      kernelsu_choice:
+        description: 'Choose which KernelSU version to install'
+        required: true
+        type: choice
+        options:
+          - 'KernelSU-Next'
+          - 'SukiSU-Ultra'
+        default: 'KernelSU-Next'
       kernelsu_next_version:
-        description: 'KernelSU-Next Version'
+        description: 'Enter KernelSU-Next version (e.g., v1.0.9). Leave blank for latest.'
         required: false
-        default: 'v1.0.9'
+        default: ''
 
 jobs:
   build:
@@ -30,12 +38,33 @@ jobs:
     - name: Initialize submodules
       run: git submodule update --init --recursive
 
-    - name: Setup KernelSU-Next
+    - name: Setup KernelSU
       run: |
-        # Remove existing KernelSU setup
+        # Remove any existing KernelSU setup
         rm -rf KernelSU-Next KernelSU drivers/kernelsu
-        # Install KernelSU-Next with user-specified version
-        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s ${{ github.event.inputs.kernelsu_next_version }}
+        
+        # Check the user's choice and install the corresponding version
+        if [ "${{ github.event.inputs.kernelsu_choice }}" == "KernelSU-Next" ]; then
+          version="${{ github.event.inputs.kernelsu_next_version }}"
+          # Use a default version if the user left the input blank
+          if [ -z "$version" ]; then
+            echo "No version specified for KernelSU-Next. Using default: v1.0.9"
+            version="v1.0.9"
+          else
+            echo "Installing KernelSU-Next version: $version"
+          fi
+          
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s "$version"
+          
+        elif [ "${{ github.event.inputs.kernelsu_choice }}" == "SukiSU-Ultra" ]; then
+          echo "Installing SukiSU-Ultra..."
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
+          
+        else
+          echo "Invalid choice. Please choose either 'KernelSU-Next' or 'SukiSU-Ultra'."
+          exit 1
+        fi
+        
         # Verify installation
         ls -la drivers/kernelsu/
         ls -la drivers/kernelsu/Kconfig || echo "Kconfig not found"
