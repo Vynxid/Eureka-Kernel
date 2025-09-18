@@ -18,7 +18,7 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_MAXSIZE: "2G"
       CCACHE_HARDLINK: "true"
-      KERNEL_DEFCONFIG: "exynos7885-a10_defconfig"
+      KERNEL_DEFCONFIG: "exynos7885-a20_defconfig"
 
     steps:
     - name: Checkout
